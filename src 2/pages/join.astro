@@ -1,0 +1,52 @@
+---
+import Layout from "../layouts/Layout.astro";
+import AvatarPicker from "../components/AvatarPicker.astro";
+import { u, str, validAvatar } from "../lib/util";
+import { makeT } from "../lib/i18n";
+import { one, run } from "../lib/db";
+import { getGroup } from "../lib/groups";
+
+const locals = Astro.locals as any;
+const user = locals.user;
+const t = makeT(locals.lang ?? "uk");
+const qcode = (Astro.url.searchParams.get("code") || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6);
+if (!user) return Astro.redirect(u(`/signup?next=${encodeURIComponent("/join" + (qcode.length === 6 ? `?code=${qcode}` : ""))}`));
+
+let err = "";
+let code = qcode;
+let name = user.name;
+
+if (Astro.request.method === "POST" && locals.db) {
+  const fd = await Astro.request.formData();
+  code = str(fd, "code", 10).toUpperCase().replace(/[^A-Z0-9]/g, "");
+  name = str(fd, "name", 40);
+  const av = validAvatar(str(fd, "avatar_icon"), str(fd, "avatar_color"));
+  const g = await getGroup(locals.db, code);
+  const already = g ? await one(locals.db, "SELECT user_id FROM members WHERE group_code = ? AND user_id = ?", code, user.id) : null;
+  if (!g) err = t("join.err.code");
+  else if (!name) err = t("join.err.name");
+  else if (already) return Astro.redirect(u(`/group/${code}?tab=me`));
+  else if (g.drawn) err = t("join.err.drawn");
+  if (!err && g) {
+    await run(
+      locals.db,
+      "INSERT INTO members (group_code, user_id, name, avatar_icon, avatar_color, joined_at) VALUES (?, ?, ?, ?, ?, ?)",
+      code, user.id, name, av?.icon ?? null, av?.color ?? null, Date.now()
+    );
+    return Astro.redirect(u(`/group/${code}?tab=me&msg=joined`));
+  }
+}
+---
+<Layout title={`${t("join.title")} · Secret Santa`} active="cabinet">
+  <section class="wrap app" style="max-width:620px">
+    <a class="back" href={u("/cabinet")}>{t("back")}</a>
+    <div class="app-head"><div><span class="eyebrow"><svg><use href="#spark"></use></svg>{t("join.eyebrow")}</span><h1>{t("join.h1")}</h1></div></div>
+    <form class="panel" method="post" novalidate>
+      {err && <p class="err">{err}</p>}
+      <div class="field"><label for="j-code">{t("join.code")}</label><input class="input" id="j-code" name="code" value={code} placeholder={t("join.codePh")} maxlength="6" autocomplete="off" style="text-transform:uppercase;letter-spacing:.2em;font-size:18px" /><span class="hint">{t("join.codeHint")}</span></div>
+      <div class="field"><label for="j-name">{t("join.name")}</label><input class="input" id="j-name" name="name" value={name} placeholder={t("join.namePh")} maxlength="40" /></div>
+      <div class="field"><span class="lab">{t("join.avatar")}</span><span class="hint">{t("join.avatarHint")}</span><AvatarPicker prefix="j" icon={user.avatar_icon} color={user.avatar_color} /></div>
+      <div><button class="btn" type="submit">{t("join.submit")}</button></div>
+    </form>
+  </section>
+</Layout>

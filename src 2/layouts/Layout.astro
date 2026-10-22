@@ -1,0 +1,124 @@
+---
+import "../styles/app.css";
+import Avatar from "../components/Avatar.astro";
+import { u } from "../lib/util";
+import { makeT, landing } from "../lib/i18n";
+
+interface Props {
+  title?: string;
+  active?: string;
+}
+const { title = "Secret Santa", active = "" } = Astro.props;
+const user = (Astro.locals as any).user;
+const dbError = (Astro.locals as any).dbError;
+const lang = (Astro.locals as any).lang ?? "uk";
+const t = makeT(lang);
+const other = lang === "en" ? "uk" : "en";
+const sw = new URL(Astro.url);
+sw.searchParams.set("lang", other);
+const switchHref = sw.pathname + sw.search;
+---
+<!doctype html>
+<html lang={lang}>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>{title}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Literata:opsz,wght@7..72,400;7..72,500;7..72,600&family=Onest:wght@400;500;600;700&family=Pinyon+Script&display=swap"
+    />
+  </head>
+  <body>
+    <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+      <symbol id="spark" viewBox="0 0 24 24"><path fill="currentColor" d="M12 1.5c.5 4.6 2.4 8 6.2 9.6-3.8 1.6-5.7 5-6.2 9.6-.5-4.6-2.4-8-6.2-9.6C9.6 9.5 11.5 6.1 12 1.5zM12 21v2M12 1v1.5M1 11.1h2M21 11.1h2" stroke="currentColor" stroke-width="1"></path></symbol>
+      <symbol id="gift" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="8" width="18" height="4" rx="1"></rect><path d="M5 12v8h14v-8M12 8v12M12 8S10.5 4 8.2 4.4C6 4.8 6.6 8 8.5 8M12 8s1.5-4 3.8-3.6C18 4.8 17.4 8 15.5 8"></path></g></symbol>
+      <symbol id="link" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"></path><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"></path></g></symbol>
+      <symbol id="av-tree" viewBox="0 0 24 24"><path fill="currentColor" d="M12 2.5l6 8h-3l4 6h-6v4.5h-2V16.5H5l4-6H6z"></path></symbol>
+      <symbol id="av-star" viewBox="0 0 24 24"><path fill="currentColor" d="M12 2.8l2.7 6.1 6.6.5-5 4.4 1.5 6.5L12 16.9l-5.8 3.4 1.5-6.5-5-4.4 6.6-.5z"></path></symbol>
+      <symbol id="av-gift" viewBox="0 0 24 24"><path fill="currentColor" d="M4 8h7v3.2H4zM13 8h7v3.2h-7zM5 12.5h6V21H5zM13 12.5h6V21h-6zM11.2 7.4C9.6 4.6 6.4 4.3 6.6 6.5c.1 1.2 2.5 1.6 4.6.9zM12.8 7.4c1.6-2.8 4.8-3.1 4.6-.9-.1 1.2-2.5 1.6-4.6.9z"></path></symbol>
+      <symbol id="av-snow" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 3v18M4.2 7.5l15.6 9M4.2 16.5l15.6-9M9.5 4.5L12 7l2.5-2.5M9.5 19.5L12 17l2.5 2.5"></path></g></symbol>
+      <symbol id="av-bell" viewBox="0 0 24 24"><path fill="currentColor" d="M12 2.5a1.5 1.5 0 011.5 1.5v.7A6 6 0 0118 10.6V15l2 2.2V18H4v-.8L6 15v-4.4a6 6 0 014.5-5.9V4A1.5 1.5 0 0112 2.5zM9.8 19.2h4.4a2.2 2.2 0 01-4.4 0z"></path></symbol>
+      <symbol id="av-ball" viewBox="0 0 24 24"><path fill="currentColor" d="M10.3 4.5h3.4v3h-3.4z"></path><circle cx="12" cy="14" r="6.5" fill="currentColor"></circle><path d="M12 2.2a1.4 1.4 0 110 2.8" fill="none" stroke="currentColor" stroke-width="1.4"></path></symbol>
+      <symbol id="av-cane" viewBox="0 0 24 24"><path d="M15.5 21.5V8.5a3.5 3.5 0 00-7 0v1" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round"></path></symbol>
+      <symbol id="av-mitten" viewBox="0 0 24 24"><path fill="currentColor" d="M8 3.5h5.5A3.5 3.5 0 0117 7v5.3l1.6-1.5a1.6 1.6 0 012.2 2.3L17 17.4V18H8zM7.5 19.2h10v2.3h-10z"></path></symbol>
+      <symbol id="av-snowman" viewBox="0 0 24 24"><circle cx="12" cy="7" r="3.6" fill="currentColor"></circle><circle cx="12" cy="16" r="5.8" fill="currentColor"></circle></symbol>
+      <symbol id="av-moon" viewBox="0 0 24 24"><path fill="currentColor" d="M14.5 2.8a8.8 8.8 0 107 13.9 7.4 7.4 0 01-7-13.9z"></path></symbol>
+      <symbol id="av-heart" viewBox="0 0 24 24"><path fill="currentColor" d="M12 20.5s-7.5-4.6-7.5-10.3A4.3 4.3 0 0112 7.6a4.3 4.3 0 017.5 2.6c0 5.7-7.5 10.3-7.5 10.3z"></path></symbol>
+      <symbol id="av-ginger" viewBox="0 0 24 24"><circle cx="12" cy="5.6" r="3.1" fill="currentColor"></circle><path fill="currentColor" d="M8.2 9.4h7.6l3.6 2.7-1.6 2.1-2.6-1.3v2.7l2.3 4.6h-3l-2.5-3.4-2.5 3.4h-3l2.3-4.6v-2.7l-2.6 1.3-1.6-2.1z"></path></symbol>
+    </svg>
+
+    <nav class="nav">
+      <div class="wrap">
+        <a class="logo logo-script" href={landing(lang)}>Secret Santa</a>
+        <div class="navlinks">
+          <a class="plain hide-m" href={landing(lang, "#how")}>{t("nav.how")}</a>
+          <a class="plain hide-m" href={landing(lang, "#features")}>{t("nav.quiz")}</a>
+          <a class={`plain ${active === "cabinet" ? "on" : ""}`} href={u("/cabinet")}>{t("nav.cabinet")}</a>
+          {
+            user ? (
+              <a class="userchip" href={u("/cabinet")}>
+                <Avatar name={user.name} icon={user.avatar_icon} color={user.avatar_color} />
+                <span class="hide-m">{user.name}</span>
+              </a>
+            ) : (
+              <a class="plain" href={u("/signin")}>{t("nav.signin")}</a>
+            )
+          }
+          <a class="btn small" href={u("/create")}>{t("nav.create")}</a>
+          <a class="langsw" href={switchHref} hreflang={other} aria-label={other === "en" ? "English" : "Українська"}>{t("nav.switch")}</a>
+        </div>
+      </div>
+    </nav>
+
+    <main>
+      {dbError && <div class="wrap" style="padding-top:24px"><p class="flash bad">{t("db.down", { e: dbError })}</p></div>}
+      <slot />
+    </main>
+
+    <script is:inline define:vars={{ copiedLabel: t("g.copied") }}>
+      // Avatar picker: live preview of the chosen icon/colour.
+      document.querySelectorAll("[data-avpick]").forEach(function (box) {
+        var prev = box.querySelector(".avprev .avatar");
+        function sync() {
+          var ic = box.querySelector('input[data-av="icon"]:checked');
+          var co = box.querySelector('input[data-av="color"]:checked');
+          if (!prev) return;
+          if (co) prev.style.background = co.value;
+          if (ic) {
+            prev.classList.add("av");
+            prev.innerHTML = '<svg aria-hidden="true"><use href="#av-' + ic.value + '"></use></svg>';
+          }
+        }
+        box.addEventListener("change", sync);
+      });
+      // "No fandoms" toggle in the questionnaire.
+      var nf = document.getElementById("noFandom");
+      if (nf) {
+        nf.addEventListener("change", function () {
+          var a = document.getElementById("fandom-block"), b = document.getElementById("chars-sec"), r = document.getElementById("wish-req");
+          if (a) a.hidden = nf.checked;
+          if (b) b.hidden = nf.checked;
+          if (r) r.hidden = !nf.checked;
+        });
+      }
+      // Copy buttons.
+      document.querySelectorAll("[data-copy]").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          var src = document.getElementById(btn.getAttribute("data-copy"));
+          var text = src ? (src.value || src.textContent) : "";
+          var done = function () { var t = btn.textContent; btn.textContent = copiedLabel; setTimeout(function () { btn.textContent = t; }, 1600); };
+          if (navigator.clipboard) navigator.clipboard.writeText(text).then(done, function () { alert(text); });
+        });
+      });
+      // Confirm destructive forms.
+      document.querySelectorAll("form[data-confirm]").forEach(function (f) {
+        f.addEventListener("submit", function (e) {
+          if (!confirm(f.getAttribute("data-confirm"))) e.preventDefault();
+        });
+      });
+    </script>
+  </body>
+</html>

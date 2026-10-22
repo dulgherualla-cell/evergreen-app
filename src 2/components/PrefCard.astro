@@ -1,0 +1,89 @@
+---
+import Avatar from "./Avatar.astro";
+import { makeT, label, agoL } from "../lib/i18n";
+interface Props {
+  member: { name: string; avatar_icon?: string | null; avatar_color?: string | null };
+  answer: any | null;
+  updatedAt?: number | null;
+  showDelivery?: boolean;
+}
+const { member, answer: a, updatedAt, showDelivery = false } = Astro.props;
+const lang = (Astro.locals as any).lang ?? "uk";
+const t = makeT(lang);
+const L = (s: string) => label(lang, s);
+const merch = a ? [...(Array.isArray(a.merch) ? a.merch.map(L) : []), ...(a.merchOther ? [a.merchOther] : [])] : [];
+const links: string[] = a ? String(a.links || "").split(/\n+/).map((s: string) => s.trim()).filter(Boolean) : [];
+const host = (x: string) => { try { return new URL(x).hostname.replace(/^www\./, ""); } catch { return ""; } };
+const isUrl = (x: string) => /^https?:\/\//i.test(x);
+const tags: string[] = a && Array.isArray(a.fandomTags) ? a.fandomTags.map(L) : [];
+---
+{
+  !a ? (
+    <div class="pref-card">
+      <div class="pc-head">
+        <div class="who">
+          <Avatar name={member.name} icon={member.avatar_icon} color={member.avatar_color} />
+          <div><b>{t("pc.wishes", { name: member.name })}</b><small>{t("pc.notFilled")}</small></div>
+        </div>
+      </div>
+      <p style="color:var(--muted)">{t("pc.notFilled.p")}</p>
+    </div>
+  ) : (
+    <div class="pref-card">
+      <div class="pc-head">
+        <div class="who">
+          <Avatar name={member.name} icon={member.avatar_icon} color={member.avatar_color} />
+          <div><b>{t("pc.wishes", { name: member.name })}</b><small>{t("pc.updated", { ago: agoL(lang, updatedAt) })}</small></div>
+        </div>
+        <span class="badge">{t("pc.badge")}</span>
+      </div>
+      {a.noFandom ? (
+        <div class="tip" style="background:var(--gold-soft)">
+          <svg style="color:var(--gold)"><use href="#spark"></use></svg>
+          <div><b style="color:#8a6524">{t("pc.noFandom")}</b><span>{t("pc.noFandom.p")}</span></div>
+        </div>
+      ) : (
+        <>
+          {tags.length > 0 && (
+            <div><div class="label">{t("q.fandoms")}</div><div class="chips">{tags.map((x) => <span class="chip">{x}</span>)}</div></div>
+          )}
+          {a.fandoms && (
+            <div>{tags.length === 0 && <div class="label">{t("q.fandoms")}</div>}<p class="ans">{a.fandoms}</p></div>
+          )}
+          {a.chars && <div><div class="label">{t("q.chars")}</div><p class="ans">{a.chars}</p></div>}
+        </>
+      )}
+      {merch.length > 0 && (
+        <div><div class="label">{t("q.merch")}</div><div class="chips">{merch.map((x) => <span class="chip">{x}</span>)}</div></div>
+      )}
+      {a.wishes && <div><div class="label">{t("q.wishes")}</div><p class="ans">{a.wishes}</p></div>}
+      {links.length > 0 && (
+        <div>
+          <div class="label">{t("q.links")}</div>
+          <div class="links">
+            {links.map((l) =>
+              isUrl(l) ? (
+                <a href={l} target="_blank" rel="noopener noreferrer nofollow">
+                  <span class="sq"><svg width="16" height="16"><use href="#link"></use></svg></span>
+                  <span>{l}<small>{host(l)}</small></span>
+                </a>
+              ) : (
+                <p class="ans">{l}</p>
+              )
+            )}
+          </div>
+        </div>
+      )}
+      {a.avoid && <div class="avoid"><div class="label">{t("q.avoid")}</div><p class="ans">{a.avoid}</p></div>}
+      {showDelivery && a.fio && (
+        <div class="tip">
+          <svg><use href="#gift"></use></svg>
+          <div style="min-width:0">
+            <b>{t("pc.ship")}</b>
+            <span class="deliv">{a.fio}<br />{a.city} · {L(a.carrier || "")} · {a.branch}<br />{a.phone}</span>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}

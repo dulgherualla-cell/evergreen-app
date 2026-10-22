@@ -1,0 +1,493 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import Avatar from "../../components/Avatar.astro";
+import AvatarPicker from "../../components/AvatarPicker.astro";
+import PrefCard from "../../components/PrefCard.astro";
+import { u, str, validAvatar, emailOk, FANDOMS, MERCH, CARRIERS } from "../../lib/util";
+import { makeT, label, fmtDateL, agoL, inviteTextL } from "../../lib/i18n";
+import { all, one, run } from "../../lib/db";
+import { getGroup, groupMembers, parseAnswer } from "../../lib/groups";
+
+const locals = Astro.locals as any;
+const user = locals.user;
+const code = String(Astro.params.code || "").toUpperCase();
+const lang = locals.lang ?? "uk";
+const t = makeT(lang);
+const L = (x: string) => label(lang, x);
+const fmtDate = (d: any) => fmtDateL(lang, d);
+const ago = (x: any) => agoL(lang, x);
+if (!user) return Astro.redirect(u(`/signin?next=${encodeURIComponent(`/group/${code}`)}`));
+const db = locals.db;
+
+let g = db ? await getGroup(db, code) : null;
+let formErr = "";
+let postedAnswer: any = null;
+
+/* ------------------------- actions ------------------------- */
+if (Astro.request.method === "POST" && db && g) {
+  const fd = await Astro.request.formData();
+  const action = str(fd, "action", 20);
+  const isOwner = g.owner_id === user.id;
+  const isMember = !!(await one(db, "SELECT user_id FROM members WHERE group_code = ? AND user_id = ?", code, user.id));
+  const back = (q: string) => Astro.redirect(u(`/group/${code}${q}`));
+
+  if (isOwner && action === "remove" && !g.drawn) {
+    const mid = str(fd, "member", 40);
+    if (mid && mid !== user.id) {
+      await run(db, "DELETE FROM answers WHERE group_code = ? AND user_id = ?", code, mid);
+      await run(db, "DELETE FROM members WHERE group_code = ? AND user_id = ?", code, mid);
+    }
+    return back("?tab=admin&msg=removed");
+  }
+
+  if (isOwner && action === "invite") {
+    const emails = str(fd, "emails", 4000)
+      .split(/[\s,;]+/)
+      .map((s) => s.trim().toLowerCase())
+      .filter(emailOk)
+      .slice(0, 100);
+    if (!emails.length) return back("?tab=admin&msg=noemails");
+    const now = Date.now();
+    await db.batch(emails.map((e) => db.prepare("INSERT OR IGNORE INTO invites (group_code, email, created_at) VALUES (?, ?, ?)").bind(code, e, now)));
+    return back(`?tab=admin&msg=invited&n=${emails.length}`);
+  }
+
+  if (isOwner && action === "draw" && !g.drawn) {
+    const ids = (await all<any>(db, "SELECT user_id FROM members WHERE group_code = ?", code)).map((r) => r.user_id);
+    if (ids.length < 3) return back("?tab=admin&msg=few");
+    // Fisher–Yates with crypto randomness, then a single cycle: nobody draws themselves.
+    for (let i = ids.length - 1; i > 0; i--) {
+      const r = crypto.getRandomValues(new Uint32Array(1))[0] / 2 ** 32;
+      const j = Math.floor(r * (i + 1));
+      [ids[i], ids[j]] = [ids[j], ids[i]];
+    }
+    const stmts = [db.prepare("DELETE FROM pairs WHERE group_code = ?").bind(code)];
+    ids.forEach((id, i) => stmts.push(db.prepare("INSERT INTO pairs (group_code, giver_id, receiver_id) VALUES (?, ?, ?)").bind(code, id, ids[(i + 1) % ids.length])));
+    stmts.push(db.prepare("UPDATE groups SET drawn = 1, drawn_at = ? WHERE code = ?").bind(Date.now(), code));
+    await db.batch(stmts);
+    return back("?tab=admin&msg=drawn");
+  }
+
+  if (isOwner && action === "reset") {
+    await db.batch([
+      db.prepare("DELETE FROM pairs WHERE group_code = ?").bind(code),
+      db.prepare("UPDATE groups SET drawn = 0, drawn_at = NULL WHERE code = ?").bind(code),
+    ]);
+    return back("?tab=admin&msg=reset");
+  }
+
+  if (isOwner && action === "delete") {
+    await db.batch([
+      db.prepare("DELETE FROM pairs WHERE group_code = ?").bind(code),
+      db.prepare("DELETE FROM answers WHERE group_code = ?").bind(code),
+      db.prepare("DELETE FROM invites WHERE group_code = ?").bind(code),
+      db.prepare("DELETE FROM members WHERE group_code = ?").bind(code),
+      db.prepare("DELETE FROM groups WHERE code = ?").bind(code),
+    ]);
+    return Astro.redirect(u("/cabinet?msg=deleted"));
+  }
+
+  if (isMember && action === "avatar") {
+    const av = validAvatar(str(fd, "avatar_icon"), str(fd, "avatar_color"));
+    if (av) await run(db, "UPDATE members SET avatar_icon = ?, avatar_color = ? WHERE group_code = ? AND user_id = ?", av.icon, av.color, code, user.id);
+    return back("?tab=me&msg=avatar");
+  }
+
+  if (isMember && action === "leave" && !g.drawn && !isOwner) {
+    await run(db, "DELETE FROM answers WHERE group_code = ? AND user_id = ?", code, user.id);
+    await run(db, "DELETE FROM members WHERE group_code = ? AND user_id = ?", code, user.id);
+    return Astro.redirect(u("/cabinet?tab=part&msg=left"));
+  }
+
+  if (isMember && action === "answers") {
+    const noF = !!fd.get("noFandom");
+    const pick = (k: string, allowed: string[]) => fd.getAll(k).map(String).filter((x) => allowed.includes(x));
+    const carrier = str(fd, "carrier", 40);
+    const ans = {
+      noFandom: noF,
+      fandomTags: noF ? [] : pick("fandomTags", FANDOMS),
+      fandoms: noF ? "" : str(fd, "fandoms", 2000),
+      chars: noF ? "" : str(fd, "chars", 2000),
+      merch: pick("merch", MERCH),
+      merchOther: str(fd, "merchOther", 300),
+      wishes: str(fd, "wishes", 3000),
+      links: str(fd, "links", 3000),
+      avoid: str(fd, "avoid", 2000),
+      agree: !!fd.get("agree"),
+      fio: str(fd, "fio", 120),
+      city: str(fd, "city", 80),
+      phone: str(fd, "phone", 30),
+      carrier: CARRIERS.includes(carrier) ? carrier : "",
+      branch: str(fd, "branch", 200),
+      question: str(fd, "question", 2000),
+    };
+    const miss: string[] = [];
+    if (noF) { if (!ans.wishes) miss.push(t("g.miss.wishes")); }
+    else if (!ans.fandoms && !ans.fandomTags.length) miss.push(t("g.miss.fandoms"));
+    if (!ans.merch.length && !ans.merchOther) miss.push(t("g.miss.merch"));
+    if (!ans.avoid) miss.push(t("g.miss.avoid"));
+    if (!ans.agree) miss.push(t("g.miss.agree"));
+    if (!ans.fio || !ans.city || !ans.phone || !ans.carrier || !ans.branch) miss.push(t("g.miss.delivery"));
+    if (miss.length) {
+      formErr = t("g.miss", { list: miss.join(", ") });
+      postedAnswer = ans;
+    } else {
+      await run(
+        db,
+        `INSERT INTO answers (group_code, user_id, data, updated_at) VALUES (?, ?, ?, ?)
+         ON CONFLICT(group_code, user_id) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at`,
+        code, user.id, JSON.stringify(ans), Date.now()
+      );
+      return back("?tab=me&msg=saved");
+    }
+  }
+}
+
+/* ------------------------- view data ------------------------- */
+const isOwner = !!g && g.owner_id === user.id;
+const ms = g ? await groupMembers(db, code) : [];
+const me = ms.find((m) => m.user_id === user.id) || null;
+const isMember = !!me;
+const done = ms.filter((m) => m.answered_at).length;
+const reqTab = Astro.url.searchParams.get("tab");
+// Organizers land on "Керування"; they can switch to "Моя участь" if they also play.
+const tab = isOwner ? (reqTab === "me" && isMember ? "me" : "admin") : "me";
+
+const invites = g && isOwner ? await all<any>(db, "SELECT email FROM invites WHERE group_code = ? ORDER BY created_at", code) : [];
+const questions =
+  g && isOwner
+    ? (await all<any>(db, "SELECT m.name, a.data FROM answers a JOIN members m ON m.group_code = a.group_code AND m.user_id = a.user_id WHERE a.group_code = ?", code))
+        .map((r) => ({ name: r.name, q: parseAnswer(r)?.question }))
+        .filter((r) => r.q)
+    : [];
+
+const myRow = g && isMember ? await one<any>(db, "SELECT data, updated_at FROM answers WHERE group_code = ? AND user_id = ?", code, user.id) : null;
+const a: any = postedAnswer ?? parseAnswer(myRow) ?? {};
+const myUpdated = myRow?.updated_at ?? null;
+
+const pair = g && isMember && g.drawn ? await one<any>(db, "SELECT receiver_id FROM pairs WHERE group_code = ? AND giver_id = ?", code, user.id) : null;
+const rec = pair ? ms.find((m) => m.user_id === pair.receiver_id) || null : null;
+const recRow = rec ? await one<any>(db, "SELECT data, updated_at FROM answers WHERE group_code = ? AND user_id = ?", code, rec.user_id) : null;
+
+const msg = Astro.url.searchParams.get("msg");
+const n = Astro.url.searchParams.get("n");
+const MSGS: Record<string, [string, string]> = {
+  created: ["ok", t("g.msg.created")],
+  joined: ["ok", t("g.msg.joined")],
+  saved: ["ok", t("g.msg.saved")],
+  avatar: ["ok", t("g.msg.avatar")],
+  removed: ["ok", t("g.msg.removed")],
+  invited: ["ok", t("g.msg.invited", { n: n || "" })],
+  noemails: ["bad", t("g.msg.noemails")],
+  drawn: ["ok", t("g.msg.drawn")],
+  reset: ["ok", t("g.msg.reset")],
+  few: ["bad", t("g.msg.few")],
+};
+const flash = msg ? MSGS[msg] : null;
+const invText = g ? inviteTextL(lang, g) : "";
+const mailHref =
+  g && invites.length
+    ? `mailto:${invites.map((i) => i.email).join(",")}?subject=${encodeURIComponent(t("g.mailSubject", { name: g.name }))}&body=${encodeURIComponent(invText)}`
+    : "";
+const has = (arr: any, v: string) => Array.isArray(arr) && arr.includes(v);
+---
+<Layout title={g ? `${g.name} · Secret Santa` : t("g.notFound")} active="cabinet">
+  <section class="wrap app">
+    {
+      !g ? (
+        <div class="empty">
+          <h3>{t("g.notFound")}</h3>
+          <p>{t("g.notFound.p")}</p>
+          <a class="btn" href={u("/cabinet")}>{t("g.toCabinet")}</a>
+        </div>
+      ) : (
+        <>
+          <a class="back" href={u("/cabinet")}>{t("back")}</a>
+          <div class="app-head">
+            <div>
+              <span class={`status ${g.drawn ? "drawn" : "open"}`}>{g.drawn ? t("status.drawn") : t("status.open")}</span>
+              <h1>{g.name}</h1>
+              <div class="meta" style="margin-top:10px">
+                <span>{t("g.budget")} <b>{g.budget || "—"}</b></span>
+                <span>{t("g.date")} <b>{fmtDate(g.date)}</b></span>
+                <span>{t("g.org")} <b>{g.owner_name || "—"}</b></span>
+              </div>
+            </div>
+            {isOwner && isMember && (
+              <div class="tabs">
+                <a href={u(`/group/${code}?tab=admin`)} class={tab === "admin" ? "on" : ""}>{t("g.tab.admin")}</a>
+                <a href={u(`/group/${code}?tab=me`)} class={tab === "me" ? "on" : ""}>{t("g.tab.me")}</a>
+              </div>
+            )}
+          </div>
+          {flash && <p class={`flash ${flash[0]}`}>{flash[1]}</p>}
+          {g.note && <p class="notice" style="margin-bottom:24px">{g.note}</p>}
+
+          {/* ---------------- organizer view ---------------- */}
+          {isOwner && tab === "admin" && (
+            <div class="two">
+              <div class="stack">
+                <div class="panel">
+                  <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+                    <h2>{t("g.members")}</h2>
+                    <span class="meta">{t("g.filled")} <b>{done} {t("g.of")} {ms.length}</b></span>
+                  </div>
+                  {ms.length ? (
+                    <div class="members">
+                      {ms.map((m) => (
+                        <div class="member">
+                          <Avatar name={m.name} icon={m.avatar_icon} color={m.avatar_color} />
+                          <div class="nm"><b>{m.name}{m.user_id === user.id ? t("g.you") : ""}</b><small>{t("g.joined", { ago: ago(m.joined_at) })}</small></div>
+                          <span class={`pill ${m.answered_at ? "ok" : "wait"}`}>{m.answered_at ? t("g.pill.ok") : t("g.pill.wait")}</span>
+                          {!g.drawn && m.user_id !== user.id && (
+                            <form method="post" class="inline" data-confirm={t("g.removeConfirm", { name: m.name })}>
+                              <input type="hidden" name="action" value="remove" />
+                              <input type="hidden" name="member" value={m.user_id} />
+                              <button class="link" type="submit" style="font-size:12px;color:var(--danger)">{t("g.remove")}</button>
+                            </form>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p style="color:var(--muted)">{t("g.noMembers")}</p>
+                  )}
+                  {invites.length > 0 && (
+                    <div>
+                      <div class="label" style="margin-bottom:6px">{t("g.invitedEmail")}</div>
+                      <div class="chips">{invites.map((i) => <span class="pill mail">{i.email}</span>)}</div>
+                    </div>
+                  )}
+                </div>
+
+                <div class="panel">
+                  <h2>{t("g.draw")}</h2>
+                  {g.drawn ? (
+                    <>
+                      <p>{t("g.drawnText", { ago: ago(g.drawn_at) })}</p>
+                      <form method="post" data-confirm={t("g.resetConfirm")}>
+                        <input type="hidden" name="action" value="reset" />
+                        <button class="btn danger" type="submit">{t("g.reset")}</button>
+                      </form>
+                    </>
+                  ) : (
+                    <>
+                      <p style="color:var(--muted)">
+                        {t("g.need3")}
+                        {ms.length - done > 0 && ms.length > 0 && t("g.notFilled", { n: ms.length - done })}
+                      </p>
+                      <form method="post" data-confirm={t("g.drawConfirm")}>
+                        <input type="hidden" name="action" value="draw" />
+                        <button class="btn rust" type="submit" disabled={ms.length < 3}>{t("g.drawBtn")}</button>
+                      </form>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              <div class="stack">
+                <div class="panel">
+                  <h2>{t("g.invite")}</h2>
+                  <div>
+                    <div class="label">{t("g.code")}</div>
+                    <div class="copyrow" style="margin-top:6px">
+                      <span class="code" id="group-code">{g.code}</span>
+                      <button class="btn small ghost" type="button" data-copy="group-code">{t("g.copy")}</button>
+                    </div>
+                  </div>
+                  <div class="field">
+                    <span class="lab">{t("g.inviteText")}</span>
+                    <div class="invite-text" id="inv-text">{invText}</div>
+                    <div class="copyrow">
+                      <button class="btn small" type="button" data-copy="inv-text">{t("g.copyText")}</button>
+                      <span class="hint" style="font-size:12px;color:var(--muted)">{t("g.addLink")}</span>
+                    </div>
+                  </div>
+                  <form class="field" method="post">
+                    <input type="hidden" name="action" value="invite" />
+                    <label for="m-emails">{t("g.emailInvite")}</label>
+                    <textarea class="input" id="m-emails" name="emails" placeholder="anna@gmail.com, petro@ukr.net" style="min-height:64px"></textarea>
+                    <span class="hint">{t("g.emailHint")}</span>
+                    <div><button class="btn small ghost" type="submit">{t("g.saveEmails")}</button></div>
+                    {mailHref && <div class="mailbtn"><a class="btn small" href={mailHref}>{t("g.mailAll")}</a></div>}
+                  </form>
+                </div>
+
+                {questions.length > 0 && (
+                  <div class="panel">
+                    <h2>{t("g.questions")}</h2>
+                    {questions.map((r) => (
+                      <div><div class="label">{r.name}</div><p class="ans">{r.q}</p></div>
+                    ))}
+                  </div>
+                )}
+
+                <div class="panel">
+                  <h2>{t("g.settings")}</h2>
+                  <form method="post" data-confirm={t("g.deleteConfirm")}>
+                    <input type="hidden" name="action" value="delete" />
+                    <button class="btn danger small" type="submit">{t("g.delete")}</button>
+                  </form>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ---------------- not a member ---------------- */}
+          {!isMember && !isOwner && (
+            <div class="empty">
+              <h3>{t("g.notMember.h")}</h3>
+              <p>{t("g.notMember.p")}</p>
+              {g.drawn ? <p>{t("g.alreadyDrawn")}</p> : <a class="btn" href={u(`/join?code=${g.code}`)}>{t("g.joinBtn")}</a>}
+            </div>
+          )}
+
+          {/* ---------------- participant view ---------------- */}
+          {isMember && tab === "me" && (
+            <div class="two">
+              <div class="stack">
+                {g.drawn && rec ? (
+                  <div class="reveal">
+                    <Avatar name={rec.name} icon={rec.avatar_icon} color={rec.avatar_color} size="lg" />
+                    <div class="label">{t("g.reveal.label")}</div>
+                    <h2>{rec.name}</h2>
+                    <p>{t("g.reveal.p")}</p>
+                  </div>
+                ) : (
+                  <div class="panel" style="flex-direction:row;gap:14px;align-items:center">
+                    <svg width="28" height="28" style="color:var(--gold);flex:none"><use href="#gift"></use></svg>
+                    <p>{g.drawn ? t("g.drawnWithout") : t("g.notDrawn")}</p>
+                  </div>
+                )}
+
+                <form class="panel" method="post">
+                  <input type="hidden" name="action" value="avatar" />
+                  <h2>{t("g.myAvatar")}</h2>
+                  <AvatarPicker prefix="p" icon={me.avatar_icon} color={me.avatar_color} />
+                  <div><button class="btn small ghost" type="submit">{t("g.saveAvatar")}</button></div>
+                </form>
+
+                <form class="panel" method="post" id="qf" novalidate>
+                  <input type="hidden" name="action" value="answers" />
+                  <div>
+                    <h2>{t("g.myForm")}</h2>
+                    <p style="color:var(--muted);font-size:14px;margin-top:6px">{t("g.myForm.p")}</p>
+                  </div>
+
+                  <div class="qsec"><span class="qn">1</span><div class="field">
+                    <span class="lab">{t("q.fandoms")} <i class="req">*</i></span>
+                    <span class="hint">{t("g.q1.hint")}</span>
+                    <label class="check nofandom"><input type="checkbox" id="noFandom" name="noFandom" value="1" checked={!!a.noFandom} /> {t("g.noFandom")}</label>
+                    <div id="fandom-block" hidden={!!a.noFandom} style="display:flex;flex-direction:column;gap:8px">
+                      <div class="seg">
+                        {FANDOMS.map((m, i) => (
+                          <label><input type="checkbox" name="fandomTags" id={`fd-${i}`} value={m} checked={has(a.fandomTags, m)} /><span>{L(m)}</span></label>
+                        ))}
+                      </div>
+                      <textarea class="input" name="fandoms" aria-label={t("q.fandomsText")} placeholder={t("g.fandomsPh")}>{a.fandoms || ""}</textarea>
+                    </div>
+                  </div></div>
+
+                  <div class="qsec" id="chars-sec" hidden={!!a.noFandom}><span class="qn">2</span><div class="field">
+                    <label for="chars">{t("q.chars")}</label>
+                    <span class="hint">{t("g.q2.hint")}</span>
+                    <textarea class="input" id="chars" name="chars" placeholder={t("g.charsPh")}>{a.chars || ""}</textarea>
+                  </div></div>
+
+                  <div class="qsec"><span class="qn">3</span><div class="field">
+                    <span class="lab">{t("q.merch")} <i class="req">*</i></span>
+                    <span class="hint">{t("g.q3.hint")}</span>
+                    <div class="seg">
+                      {MERCH.map((m, i) => (
+                        <label><input type="checkbox" name="merch" id={`merch-${i}`} value={m} checked={has(a.merch, m)} /><span>{L(m)}</span></label>
+                      ))}
+                    </div>
+                    <input class="input" name="merchOther" value={a.merchOther || ""} placeholder={t("g.merchPh")} style="margin-top:6px" />
+                  </div></div>
+
+                  <div class="qsec"><span class="qn">4</span><div class="field">
+                    <label for="wishes">{t("q.wishes")} <i class="req" id="wish-req" hidden={!a.noFandom}>*</i></label>
+                    <span class="hint">{t("g.q4.hint")}</span>
+                    <textarea class="input" id="wishes" name="wishes" placeholder={t("g.wishesPh")}>{a.wishes || ""}</textarea>
+                    <textarea class="input" name="links" placeholder={t("g.linksPh")} style="min-height:60px;margin-top:6px">{a.links || ""}</textarea>
+                  </div></div>
+
+                  <div class="qsec"><span class="qn">5</span><div class="field">
+                    <label for="avoid">{t("q.avoid")} <i class="req">*</i></label>
+                    <span class="hint">{t("g.q5.hint")}</span>
+                    <textarea class="input" id="avoid" name="avoid" placeholder={t("g.avoidPh")}>{a.avoid || ""}</textarea>
+                  </div></div>
+
+                  <div class="agree">
+                    <p>{t("g.agree.p")}</p>
+                    <label class="check"><input type="checkbox" name="agree" value="1" checked={!!a.agree} /> {t("g.agree")} <i class="req">*</i></label>
+                  </div>
+
+                  <div class="qsec"><span class="qn">6</span><div class="field" style="gap:12px">
+                    <span class="lab">{t("g.q6")} <i class="req">*</i></span>
+                    <span class="hint">{t("g.q6.hint")}</span>
+                    <div class="field"><label for="fio">{t("q.fio")}</label><input class="input" id="fio" name="fio" value={a.fio || ""} autocomplete="name" /></div>
+                    <div class="row">
+                      <div class="field"><label for="city">{t("q.city")}</label><input class="input" id="city" name="city" value={a.city || ""} /></div>
+                      <div class="field"><label for="phone">{t("q.phone")}</label><input class="input" id="phone" name="phone" type="tel" value={a.phone || ""} placeholder="+380…" autocomplete="tel" /></div>
+                    </div>
+                    <div class="field">
+                      <span class="lab">{t("q.carrier")}</span>
+                      <div class="seg" role="radiogroup">
+                        {CARRIERS.map((c, i) => (
+                          <label><input type="radio" name="carrier" id={`carrier-${i}`} value={c} checked={a.carrier === c} /><span>{L(c)}</span></label>
+                        ))}
+                      </div>
+                    </div>
+                    <div class="field"><label for="branch">{t("q.branch")}</label><input class="input" id="branch" name="branch" value={a.branch || ""} placeholder={t("g.branchPh")} /></div>
+                  </div></div>
+
+                  <div class="qsec"><span class="qn">7</span><div class="field">
+                    <label for="question">{t("q.question")}</label>
+                    <span class="hint">{t("g.q7.hint")}</span>
+                    <textarea class="input" id="question" name="question" style="min-height:60px">{a.question || ""}</textarea>
+                  </div></div>
+
+                  {formErr && <p class="err">{formErr}</p>}
+                  <div class="copyrow">
+                    <button class="btn" type="submit">{myUpdated ? t("g.update") : t("g.save")}</button>
+                    {myUpdated && <span class="hint" style="font-size:12px;color:var(--muted)">{t("g.savedAgo", { ago: ago(myUpdated) })}</span>}
+                  </div>
+                </form>
+              </div>
+
+              <div class="stack">
+                {g.drawn && rec ? (
+                  <PrefCard member={rec} answer={parseAnswer(recRow)} updatedAt={recRow?.updated_at} showDelivery={true} />
+                ) : (
+                  <>
+                    <div class="panel"><h2>{t("g.preview.h")}</h2><p style="color:var(--muted);font-size:14px">{t("g.preview.p")}</p></div>
+                    <PrefCard member={me} answer={myUpdated ? parseAnswer(myRow) : null} updatedAt={myUpdated} showDelivery={true} />
+                  </>
+                )}
+                <div class="panel">
+                  <h2>{t("g.members")}</h2>
+                  <div class="members">
+                    {ms.map((m) => (
+                      <div class="member">
+                        <Avatar name={m.name} icon={m.avatar_icon} color={m.avatar_color} />
+                        <div class="nm"><b>{m.name}{m.user_id === user.id ? t("g.you") : ""}</b></div>
+                        <span class={`pill ${m.answered_at ? "ok" : "wait"}`}>{m.answered_at ? t("g.pill.ok") : t("g.pill.waitShort")}</span>
+                      </div>
+                    ))}
+                  </div>
+                  {!g.drawn && !isOwner && (
+                    <form method="post" data-confirm={t("g.leaveConfirm")}>
+                      <input type="hidden" name="action" value="leave" />
+                      <button class="link" type="submit" style="color:var(--danger);font-size:13px">{t("g.leave")}</button>
+                    </form>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+        </>
+      )
+    }
+  </section>
+</Layout>

@@ -1,0 +1,67 @@
+---
+import Layout from "../layouts/Layout.astro";
+import BrandPanel from "../components/BrandPanel.astro";
+import AvatarPicker from "../components/AvatarPicker.astro";
+import { u, str, emailOk, validAvatar, safeNext } from "../lib/util";
+import { makeT } from "../lib/i18n";
+import { one, run } from "../lib/db";
+import { hashPassword, newId, createSession } from "../lib/auth";
+
+const locals = Astro.locals as any;
+const t = makeT(locals.lang ?? "uk");
+const next = safeNext(Astro.url.searchParams.get("next"));
+if (locals.user) return Astro.redirect(u(next));
+
+let err = "";
+let name = "";
+let email = "";
+let icon: string | null = null;
+let color: string | null = null;
+
+if (Astro.request.method === "POST" && locals.db) {
+  const fd = await Astro.request.formData();
+  name = str(fd, "name", 40);
+  email = str(fd, "email", 120).toLowerCase();
+  const pass = String(fd.get("password") || "");
+  const av = validAvatar(str(fd, "avatar_icon"), str(fd, "avatar_color"));
+  icon = av?.icon ?? null;
+  color = av?.color ?? null;
+  if (!name) err = t("signup.err.name");
+  else if (!emailOk(email)) err = t("signup.err.email");
+  else if (pass.length < 8) err = t("signup.err.pass");
+  else if (pass.length > 200) err = t("signup.err.long");
+  else if (!fd.get("agree")) err = t("signup.err.agree");
+  else if (await one(locals.db, "SELECT id FROM users WHERE email = ?", email)) err = t("signup.err.exists");
+  if (!err) {
+    const { hash, salt } = await hashPassword(pass);
+    const id = newId();
+    await run(
+      locals.db,
+      "INSERT INTO users (id, email, name, pass_hash, pass_salt, avatar_icon, avatar_color, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+      id, email, name, hash, salt, icon, color, Date.now()
+    );
+    await createSession(locals.db, id, Astro.cookies, Astro.url.protocol === "https:");
+    return Astro.redirect(u(next));
+  }
+}
+---
+<Layout title={`${t("signup.title")} · Secret Santa`}>
+  <section class="auth">
+    <BrandPanel />
+    <div class="auth-side">
+      <form class="auth-card" method="post" novalidate>
+        <span class="eyebrow"><svg><use href="#spark"></use></svg>{t("signup.eyebrow")}</span>
+        <h1>{t("signup.h1")}</h1>
+        <p style="color:var(--muted)">{t("signup.lead")}</p>
+        {err && <p class="err">{err}</p>}
+        <div class="field"><label for="su-name">{t("signup.name")}</label><input class="input" id="su-name" name="name" autocomplete="name" maxlength="40" value={name} required /></div>
+        <div class="field"><label for="su-email">{t("signup.email")}</label><input class="input" id="su-email" name="email" type="email" autocomplete="email" placeholder="you@gmail.com" value={email} required /></div>
+        <div class="field"><label for="su-pass">{t("signup.pass")}</label><input class="input" id="su-pass" name="password" type="password" autocomplete="new-password" minlength="8" required /><span class="hint">{t("signup.passHint")}</span></div>
+        <div class="field"><span class="lab">{t("signup.avatar")}</span><AvatarPicker prefix="su" icon={icon} color={color} /></div>
+        <label class="check"><input type="checkbox" name="agree" value="1" /> {t("signup.agree")}</label>
+        <button class="btn block" type="submit">{t("signup.submit")}</button>
+        <div class="center-row"><span>{t("signup.have")}</span><a class="link" href={u(`/signin?next=${encodeURIComponent(next)}`)}>{t("nav.signin")}</a></div>
+      </form>
+    </div>
+  </section>
+</Layout>

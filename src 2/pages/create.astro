@@ -1,0 +1,63 @@
+---
+import Layout from "../layouts/Layout.astro";
+import AvatarPicker from "../components/AvatarPicker.astro";
+import { u, str, genCode, validAvatar } from "../lib/util";
+import { makeT } from "../lib/i18n";
+import { one, run } from "../lib/db";
+
+const locals = Astro.locals as any;
+const user = locals.user;
+const t = makeT(locals.lang ?? "uk");
+if (!user) return Astro.redirect(u("/signup?next=/create"));
+
+let err = "";
+const v = { name: "", budget: "", date: "2026-12-30", you: user.name, note: "" };
+
+if (Astro.request.method === "POST" && locals.db) {
+  const fd = await Astro.request.formData();
+  v.name = str(fd, "name", 60);
+  v.budget = str(fd, "budget", 30);
+  v.date = /^\d{4}-\d{2}-\d{2}$/.test(str(fd, "date")) ? str(fd, "date") : "";
+  v.you = str(fd, "you", 40);
+  v.note = str(fd, "note", 500);
+  const av = validAvatar(str(fd, "avatar_icon"), str(fd, "avatar_color"));
+  if (!v.name || !v.you) err = t("create.err");
+  if (!err) {
+    let code = genCode();
+    for (let i = 0; i < 5 && (await one(locals.db, "SELECT code FROM groups WHERE code = ?", code)); i++) code = genCode();
+    const now = Date.now();
+    await run(
+      locals.db,
+      "INSERT INTO groups (code, name, budget, date, note, owner_id, owner_name, created_at, drawn) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)",
+      code, v.name, v.budget, v.date, v.note, user.id, v.you, now
+    );
+    if (fd.get("join")) {
+      await run(
+        locals.db,
+        "INSERT INTO members (group_code, user_id, name, avatar_icon, avatar_color, joined_at) VALUES (?, ?, ?, ?, ?, ?)",
+        code, user.id, v.you, av?.icon ?? null, av?.color ?? null, now
+      );
+    }
+    return Astro.redirect(u(`/group/${code}?msg=created`));
+  }
+}
+---
+<Layout title={`${t("create.title")} · Secret Santa`} active="cabinet">
+  <section class="wrap app" style="max-width:760px">
+    <a class="back" href={u("/cabinet")}>{t("back")}</a>
+    <div class="app-head"><div><span class="eyebrow"><svg><use href="#spark"></use></svg>{t("create.eyebrow")}</span><h1>{t("create.h1")}</h1></div></div>
+    <form class="panel" method="post" novalidate>
+      {err && <p class="err">{err}</p>}
+      <div class="field"><label for="c-name">{t("create.name")}</label><input class="input" id="c-name" name="name" required placeholder={t("create.namePh")} maxlength="60" value={v.name} /></div>
+      <div class="row">
+        <div class="field"><label for="c-budget">{t("create.budget")}</label><input class="input" id="c-budget" name="budget" placeholder={t("create.budgetPh")} maxlength="30" value={v.budget} /></div>
+        <div class="field"><label for="c-date">{t("create.date")}</label><input class="input" id="c-date" name="date" type="date" value={v.date} /></div>
+      </div>
+      <div class="field"><label for="c-you">{t("create.you")}</label><input class="input" id="c-you" name="you" value={v.you} placeholder={t("create.youPh")} maxlength="40" /></div>
+      <div class="field"><label for="c-note">{t("create.note")}</label><textarea class="input" id="c-note" name="note" placeholder={t("create.notePh")} maxlength="500">{v.note}</textarea></div>
+      <div class="field"><span class="lab">{t("create.avatar")}</span><AvatarPicker prefix="c" icon={user.avatar_icon} color={user.avatar_color} /></div>
+      <label class="check"><input type="checkbox" name="join" value="1" checked /> {t("create.join")}</label>
+      <div><button class="btn" type="submit">{t("create.submit")}</button></div>
+    </form>
+  </section>
+</Layout>
