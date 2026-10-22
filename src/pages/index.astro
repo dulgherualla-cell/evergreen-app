@@ -1,0 +1,5 @@
+---
+import { u } from "../lib/util";
+const user = (Astro.locals as any).user;
+return Astro.redirect(user ? u("/cabinet") : u("/signin"));
+---

@@ -1,0 +1,20 @@
+---
+import { validAvatar, initials } from "../lib/util";
+interface Props {
+  name?: string | null;
+  icon?: string | null;
+  color?: string | null;
+  size?: "lg" | "";
+}
+const { name, icon, color, size = "" } = Astro.props;
+const av = validAvatar(icon, color);
+---
+{
+  av ? (
+    <div class={`avatar av ${size}`} style={`background:${av.color}`}>
+      <svg aria-hidden="true"><use href={`#av-${av.icon}`}></use></svg>
+    </div>
+  ) : (
+    <div class={`avatar ${size}`}>{initials(name)}</div>
+  )
+}

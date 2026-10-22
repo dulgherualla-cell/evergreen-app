@@ -1,0 +1,36 @@
+---
+import Avatar from "./Avatar.astro";
+import { AV_ICONS, AV_COLORS, validAvatar, randAvatar } from "../lib/util";
+interface Props {
+  prefix: string;
+  icon?: string | null;
+  color?: string | null;
+}
+const { prefix, icon, color } = Astro.props;
+const cur = validAvatar(icon, color) ?? randAvatar();
+---
+<div class="avpick" data-avpick>
+  <div class="avprev"><Avatar icon={cur.icon} color={cur.color} size="lg" /></div>
+  <div style="display:flex;flex-direction:column;gap:10px;min-width:0">
+    <div class="seg av-icons" role="radiogroup" aria-label="Іконка">
+      {
+        AV_ICONS.map((i) => (
+          <label>
+            <input type="radio" name="avatar_icon" id={`${prefix}-i-${i}`} value={i} data-av="icon" checked={cur.icon === i} />
+            <span><svg><use href={`#av-${i}`}></use></svg></span>
+          </label>
+        ))
+      }
+    </div>
+    <div class="seg av-colors" role="radiogroup" aria-label="Колір">
+      {
+        AV_COLORS.map((c, k) => (
+          <label>
+            <input type="radio" name="avatar_color" id={`${prefix}-c-${k}`} value={c} data-av="color" checked={cur.color === c} />
+            <span style={`background:${c}`}></span>
+          </label>
+        ))
+      }
+    </div>
+  </div>
+</div>

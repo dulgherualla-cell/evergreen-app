@@ -1,0 +1,50 @@
+---
+import Layout from "../layouts/Layout.astro";
+import AvatarPicker from "../components/AvatarPicker.astro";
+import { u, str, validAvatar } from "../lib/util";
+import { one, run } from "../lib/db";
+import { getGroup } from "../lib/groups";
+
+const locals = Astro.locals as any;
+const user = locals.user;
+const qcode = (Astro.url.searchParams.get("code") || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6);
+if (!user) return Astro.redirect(u(`/signup?next=${encodeURIComponent("/join" + (qcode.length === 6 ? `?code=${qcode}` : ""))}`));
+
+let err = "";
+let code = qcode;
+let name = user.name;
+
+if (Astro.request.method === "POST" && locals.db) {
+  const fd = await Astro.request.formData();
+  code = str(fd, "code", 10).toUpperCase().replace(/[^A-Z0-9]/g, "");
+  name = str(fd, "name", 40);
+  const av = validAvatar(str(fd, "avatar_icon"), str(fd, "avatar_color"));
+  const g = await getGroup(locals.db, code);
+  const already = g ? await one(locals.db, "SELECT user_id FROM members WHERE group_code = ? AND user_id = ?", code, user.id) : null;
+  if (!g) err = "Групу з таким кодом не знайдено. Перевірте літери й цифри.";
+  else if (!name) err = "Вкажіть своє ім'я.";
+  else if (already) return Astro.redirect(u(`/group/${code}?tab=me`));
+  else if (g.drawn) err = "У цій групі жеребкування вже проведено. Попросіть організатора скинути його, щоб вас додали.";
+  if (!err && g) {
+    await run(
+      locals.db,
+      "INSERT INTO members (group_code, user_id, name, avatar_icon, avatar_color, joined_at) VALUES (?, ?, ?, ?, ?, ?)",
+      code, user.id, name, av?.icon ?? null, av?.color ?? null, Date.now()
+    );
+    return Astro.redirect(u(`/group/${code}?tab=me&msg=joined`));
+  }
+}
+---
+<Layout title="Приєднатися · Evergreen" active="cabinet">
+  <section class="wrap app" style="max-width:620px">
+    <a class="back" href={u("/cabinet")}>← До кабінету</a>
+    <div class="app-head"><div><span class="eyebrow"><svg><use href="#spark"></use></svg>Запрошення</span><h1>Приєднатися до групи</h1></div></div>
+    <form class="panel" method="post" novalidate>
+      {err && <p class="err">{err}</p>}
+      <div class="field"><label for="j-code">Код групи</label><input class="input" id="j-code" name="code" value={code} placeholder="Наприклад, K7MQ2X" maxlength="6" autocomplete="off" style="text-transform:uppercase;letter-spacing:.2em;font-size:18px" /><span class="hint">Код надсилає організатор у запрошенні.</span></div>
+      <div class="field"><label for="j-name">Ваше ім'я</label><input class="input" id="j-name" name="name" value={name} placeholder="Як вас бачитиме ваш Санта" maxlength="40" /></div>
+      <div class="field"><span class="lab">Оберіть аватар</span><span class="hint">Так вас бачитимуть інші учасники групи.</span><AvatarPicker prefix="j" icon={user.avatar_icon} color={user.avatar_color} /></div>
+      <div><button class="btn" type="submit">Приєднатися</button></div>
+    </form>
+  </section>
+</Layout>

@@ -1,0 +1,15 @@
+---
+import Avatar from "./Avatar.astro";
+const stack = [["heart", "#b8684f"], ["snowman", "#6f9bb4"], ["star", "#d4a359"], ["tree", "#3e5643"]];
+---
+<aside class="auth-brand">
+  <span class="logo" style="color:#fff"><svg style="color:var(--gold)"><use href="#spark"></use></svg>Evergreen</span>
+  <div>
+    <h2>Secret Santa</h2>
+    <p>Організуйте обмін подарунками для родини, друзів чи колег. Кілька груп, анкети побажань і жеребкування в одному кабінеті.</p>
+  </div>
+  <div class="stack-av">
+    <span class="row">{stack.map(([icon, color]) => <Avatar icon={icon} color={color} />)}</span>
+    <span style="margin-left:10px">Створюйте групи та запрошуйте близьких</span>
+  </div>
+</aside>
