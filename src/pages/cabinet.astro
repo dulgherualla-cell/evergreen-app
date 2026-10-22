@@ -12,7 +12,7 @@ const list = locals.db ? (tab === "admin" ? await ownedGroups(locals.db, user.id
 const msg = Astro.url.searchParams.get("msg");
 const MSGS: Record<string, string> = { deleted: "Групу видалено.", left: "Ви вийшли з групи." };
 ---
-<Layout title="Мій кабінет · Evergreen" active="cabinet">
+<Layout title="Мій кабінет · Secret Santa" active="cabinet">
   <section class="wrap app">
     <div class="app-head">
       <div>

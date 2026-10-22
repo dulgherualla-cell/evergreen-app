@@ -1,4 +1,4 @@
-/* Layout: editorial cream landing (Figma "Evergreen") + calm two-column cabinet app */
+/* Layout: editorial cream landing (Figma "Secret Santa") + calm two-column cabinet app */
 :root{
   --cream:#f8f6f1; --paper:#ffffff; --stripe:#e8e3da; --line:#efece8;
   --ink:#1c2b24; --muted:#6b7770; --pine:#3e5643; --pine-soft:#f0f4f1; --pine-deep:#2f4434;
@@ -281,3 +281,5 @@ a.gcard{text-decoration:none;color:inherit}
 .tabs a.on{background:var(--pine);color:#fff}
 .mailbtn{margin-top:6px}
 a.userchip{text-decoration:none;color:inherit}
+.logo.logo-script{font-family:var(--f-script);font-style:normal;font-weight:400;font-size:30px;line-height:1.1;letter-spacing:0}
+.auth-brand .logo.logo-script{font-size:34px}

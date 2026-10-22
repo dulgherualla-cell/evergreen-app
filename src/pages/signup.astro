@@ -43,12 +43,12 @@ if (Astro.request.method === "POST" && locals.db) {
   }
 }
 ---
-<Layout title="Реєстрація · Evergreen">
+<Layout title="Реєстрація · Secret Santa">
   <section class="auth">
     <BrandPanel />
     <div class="auth-side">
       <form class="auth-card" method="post" novalidate>
-        <span class="eyebrow"><svg><use href="#spark"></use></svg>Кабінет Evergreen</span>
+        <span class="eyebrow"><svg><use href="#spark"></use></svg>Кабінет Secret Santa</span>
         <h1>Створіть акаунт</h1>
         <p style="color:var(--muted)">Акаунт потрібен, щоб створювати розіграші, приєднуватися до груп і заповнювати анкету.</p>
         {err && <p class="err">{err}</p>}

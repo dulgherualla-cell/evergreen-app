@@ -7,7 +7,7 @@ interface Props {
   title?: string;
   active?: string;
 }
-const { title = "Evergreen Secret Santa", active = "" } = Astro.props;
+const { title = "Secret Santa", active = "" } = Astro.props;
 const user = (Astro.locals as any).user;
 const dbError = (Astro.locals as any).dbError;
 ---
@@ -45,10 +45,10 @@ const dbError = (Astro.locals as any).dbError;
 
     <nav class="nav">
       <div class="wrap">
-        <a class="logo" href="/"><svg><use href="#spark"></use></svg>Evergreen</a>
+        <a class="logo logo-script" href="/">Secret Santa</a>
         <div class="navlinks">
           <a class="plain hide-m" href="/#how">Як це працює</a>
-          <a class="plain hide-m" href="/#faq">Питання</a>
+          <a class="plain hide-m" href="/#features">Опитувальник</a>
           <a class={`plain ${active === "cabinet" ? "on" : ""}`} href={u("/cabinet")}>Мій кабінет</a>
           {
             user ? (
