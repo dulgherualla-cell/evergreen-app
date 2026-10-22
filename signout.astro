@@ -1,0 +1,11 @@
+---
+import { u } from "../lib/util";
+import { destroySession, SESSION_COOKIE } from "../lib/auth";
+
+const locals = Astro.locals as any;
+if (Astro.request.method === "POST" && locals.db) {
+  await destroySession(locals.db, Astro.cookies.get(SESSION_COOKIE)?.value, Astro.cookies);
+  return Astro.redirect("/");
+}
+return Astro.redirect(u("/cabinet"));
+---

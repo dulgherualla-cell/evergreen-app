@@ -1,0 +1,86 @@
+---
+import Avatar from "./Avatar.astro";
+import { Q, ago } from "../lib/util";
+interface Props {
+  member: { name: string; avatar_icon?: string | null; avatar_color?: string | null };
+  answer: any | null;
+  updatedAt?: number | null;
+  showDelivery?: boolean;
+}
+const { member, answer: a, updatedAt, showDelivery = false } = Astro.props;
+const merch = a ? [...(Array.isArray(a.merch) ? a.merch : []), ...(a.merchOther ? [a.merchOther] : [])] : [];
+const links: string[] = a ? String(a.links || "").split(/\n+/).map((s: string) => s.trim()).filter(Boolean) : [];
+const host = (x: string) => { try { return new URL(x).hostname.replace(/^www\./, ""); } catch { return ""; } };
+const isUrl = (x: string) => /^https?:\/\//i.test(x);
+const tags: string[] = a && Array.isArray(a.fandomTags) ? a.fandomTags : [];
+---
+{
+  !a ? (
+    <div class="pref-card">
+      <div class="pc-head">
+        <div class="who">
+          <Avatar name={member.name} icon={member.avatar_icon} color={member.avatar_color} />
+          <div><b>Побажання: {member.name}</b><small>Анкету ще не заповнено</small></div>
+        </div>
+      </div>
+      <p style="color:var(--muted)">Ця людина ще не відповіла на питання. Загляньте пізніше: відповіді з'являться тут автоматично.</p>
+    </div>
+  ) : (
+    <div class="pref-card">
+      <div class="pc-head">
+        <div class="who">
+          <Avatar name={member.name} icon={member.avatar_icon} color={member.avatar_color} />
+          <div><b>Побажання: {member.name}</b><small>Оновлено {ago(updatedAt)}</small></div>
+        </div>
+        <span class="badge">Особистий гід</span>
+      </div>
+      {a.noFandom ? (
+        <div class="tip" style="background:var(--gold-soft)">
+          <svg style="color:var(--gold)"><use href="#spark"></use></svg>
+          <div><b style="color:#8a6524">Без фандомів</b><span>Орієнтуйтеся на побажання нижче.</span></div>
+        </div>
+      ) : (
+        <>
+          {tags.length > 0 && (
+            <div><div class="label">{Q.fandoms}</div><div class="chips">{tags.map((t) => <span class="chip">{t}</span>)}</div></div>
+          )}
+          {a.fandoms && (
+            <div>{tags.length === 0 && <div class="label">{Q.fandoms}</div>}<p class="ans">{a.fandoms}</p></div>
+          )}
+          {a.chars && <div><div class="label">{Q.chars}</div><p class="ans">{a.chars}</p></div>}
+        </>
+      )}
+      {merch.length > 0 && (
+        <div><div class="label">{Q.merch}</div><div class="chips">{merch.map((t) => <span class="chip">{t}</span>)}</div></div>
+      )}
+      {a.wishes && <div><div class="label">{Q.wishes}</div><p class="ans">{a.wishes}</p></div>}
+      {links.length > 0 && (
+        <div>
+          <div class="label">{Q.links}</div>
+          <div class="links">
+            {links.map((l) =>
+              isUrl(l) ? (
+                <a href={l} target="_blank" rel="noopener noreferrer nofollow">
+                  <span class="sq"><svg width="16" height="16"><use href="#link"></use></svg></span>
+                  <span>{l}<small>{host(l)}</small></span>
+                </a>
+              ) : (
+                <p class="ans">{l}</p>
+              )
+            )}
+          </div>
+        </div>
+      )}
+      {a.avoid && <div class="avoid"><div class="label">{Q.avoid}</div><p class="ans">{a.avoid}</p></div>}
+      {showDelivery && a.fio && (
+        <div class="tip">
+          <svg><use href="#gift"></use></svg>
+          <div style="min-width:0">
+            <b>Куди надіслати подарунок</b>
+            <span class="deliv">{a.fio}<br />{a.city} · {a.carrier} · {a.branch}<br />{a.phone}</span>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
