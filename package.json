@@ -8,15 +8,9 @@
   },
   "scripts": {
     "dev": "astro dev",
-    "build": "astro build",
-    "preview": "astro build && wrangler dev",
-    "db:apply:local": "wrangler d1 migrations apply DB --local"
+    "build": "astro build"
   },
   "dependencies": {
     "astro": "^5.7.0"
-  },
-  "devDependencies": {
-    "@cloudflare/workers-types": "^4.20250415.0",
-    "wrangler": "^4.0.0"
   }
 }
