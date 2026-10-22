@@ -283,3 +283,5 @@ a.gcard{text-decoration:none;color:inherit}
 a.userchip{text-decoration:none;color:inherit}
 .logo.logo-script{font-family:var(--f-script);font-style:normal;font-weight:400;font-size:30px;line-height:1.1;letter-spacing:0}
 .auth-brand .logo.logo-script{font-size:34px}
+.langsw{font-size:12px;font-weight:700;letter-spacing:.06em;color:var(--pine);text-decoration:none;border:1px solid #ddd8cf;border-radius:20px;padding:6px 10px}
+.langsw:hover{background:var(--pine-soft)}

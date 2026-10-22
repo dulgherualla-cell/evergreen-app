@@ -1,6 +1,7 @@
 ---
 import Avatar from "./Avatar.astro";
 import { AV_ICONS, AV_COLORS, validAvatar, randAvatar } from "../lib/util";
+const en = (Astro.locals as any).lang === "en";
 interface Props {
   prefix: string;
   icon?: string | null;
@@ -12,7 +13,7 @@ const cur = validAvatar(icon, color) ?? randAvatar();
 <div class="avpick" data-avpick>
   <div class="avprev"><Avatar icon={cur.icon} color={cur.color} size="lg" /></div>
   <div style="display:flex;flex-direction:column;gap:10px;min-width:0">
-    <div class="seg av-icons" role="radiogroup" aria-label="Іконка">
+    <div class="seg av-icons" role="radiogroup" aria-label={en ? "Icon" : "Іконка"}>
       {
         AV_ICONS.map((i) => (
           <label>
@@ -22,7 +23,7 @@ const cur = validAvatar(icon, color) ?? randAvatar();
         ))
       }
     </div>
-    <div class="seg av-colors" role="radiogroup" aria-label="Колір">
+    <div class="seg av-colors" role="radiogroup" aria-label={en ? "Colour" : "Колір"}>
       {
         AV_COLORS.map((c, k) => (
           <label>

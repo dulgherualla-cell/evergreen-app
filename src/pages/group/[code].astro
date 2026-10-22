@@ -3,13 +3,19 @@ import Layout from "../../layouts/Layout.astro";
 import Avatar from "../../components/Avatar.astro";
 import AvatarPicker from "../../components/AvatarPicker.astro";
 import PrefCard from "../../components/PrefCard.astro";
-import { u, str, fmtDate, ago, validAvatar, emailOk, inviteText, FANDOMS, MERCH, CARRIERS, Q } from "../../lib/util";
+import { u, str, validAvatar, emailOk, FANDOMS, MERCH, CARRIERS } from "../../lib/util";
+import { makeT, label, fmtDateL, agoL, inviteTextL } from "../../lib/i18n";
 import { all, one, run } from "../../lib/db";
 import { getGroup, groupMembers, parseAnswer } from "../../lib/groups";
 
 const locals = Astro.locals as any;
 const user = locals.user;
 const code = String(Astro.params.code || "").toUpperCase();
+const lang = locals.lang ?? "uk";
+const t = makeT(lang);
+const L = (x: string) => label(lang, x);
+const fmtDate = (d: any) => fmtDateL(lang, d);
+const ago = (x: any) => agoL(lang, x);
 if (!user) return Astro.redirect(u(`/signin?next=${encodeURIComponent(`/group/${code}`)}`));
 const db = locals.db;
 
@@ -116,14 +122,14 @@ if (Astro.request.method === "POST" && db && g) {
       question: str(fd, "question", 2000),
     };
     const miss: string[] = [];
-    if (noF) { if (!ans.wishes) miss.push("побажання (обов'язкові, якщо без фандомів)"); }
-    else if (!ans.fandoms && !ans.fandomTags.length) miss.push("фандоми або позначка «без фандомів»");
-    if (!ans.merch.length && !ans.merchOther) miss.push("види мерчу");
-    if (!ans.avoid) miss.push("що точно не дарувати");
-    if (!ans.agree) miss.push("згода з правилами");
-    if (!ans.fio || !ans.city || !ans.phone || !ans.carrier || !ans.branch) miss.push("дані для доставки");
+    if (noF) { if (!ans.wishes) miss.push(t("g.miss.wishes")); }
+    else if (!ans.fandoms && !ans.fandomTags.length) miss.push(t("g.miss.fandoms"));
+    if (!ans.merch.length && !ans.merchOther) miss.push(t("g.miss.merch"));
+    if (!ans.avoid) miss.push(t("g.miss.avoid"));
+    if (!ans.agree) miss.push(t("g.miss.agree"));
+    if (!ans.fio || !ans.city || !ans.phone || !ans.carrier || !ans.branch) miss.push(t("g.miss.delivery"));
     if (miss.length) {
-      formErr = "Заповніть обов'язкові поля: " + miss.join(", ") + ".";
+      formErr = t("g.miss", { list: miss.join(", ") });
       postedAnswer = ans;
     } else {
       await run(
@@ -166,51 +172,51 @@ const recRow = rec ? await one<any>(db, "SELECT data, updated_at FROM answers WH
 const msg = Astro.url.searchParams.get("msg");
 const n = Astro.url.searchParams.get("n");
 const MSGS: Record<string, [string, string]> = {
-  created: ["ok", "Групу створено. Надішліть учасникам код або текст запрошення."],
-  joined: ["ok", "Ви в групі! Заповніть анкету, щоб ваш Санта знав, що вам подарувати."],
-  saved: ["ok", "Анкету збережено."],
-  avatar: ["ok", "Аватар оновлено."],
-  removed: ["ok", "Учасника прибрано."],
-  invited: ["ok", `Додано до списку запрошених: ${n || ""}. Тепер відкрийте пошту з готовим листом.`],
-  noemails: ["bad", "Не знайшли жодної адреси. Перевірте формат: name@mail.com"],
-  drawn: ["ok", "Жеребкування проведено. Кожен учасник уже бачить свою людину."],
-  reset: ["ok", "Жеребкування скинуто."],
-  few: ["bad", "Потрібно щонайменше 3 учасники."],
+  created: ["ok", t("g.msg.created")],
+  joined: ["ok", t("g.msg.joined")],
+  saved: ["ok", t("g.msg.saved")],
+  avatar: ["ok", t("g.msg.avatar")],
+  removed: ["ok", t("g.msg.removed")],
+  invited: ["ok", t("g.msg.invited", { n: n || "" })],
+  noemails: ["bad", t("g.msg.noemails")],
+  drawn: ["ok", t("g.msg.drawn")],
+  reset: ["ok", t("g.msg.reset")],
+  few: ["bad", t("g.msg.few")],
 };
 const flash = msg ? MSGS[msg] : null;
-const invText = g ? inviteText(g) : "";
+const invText = g ? inviteTextL(lang, g) : "";
 const mailHref =
   g && invites.length
-    ? `mailto:${invites.map((i) => i.email).join(",")}?subject=${encodeURIComponent(`Запрошення в Таємного Санту «${g.name}»`)}&body=${encodeURIComponent(invText)}`
+    ? `mailto:${invites.map((i) => i.email).join(",")}?subject=${encodeURIComponent(t("g.mailSubject", { name: g.name }))}&body=${encodeURIComponent(invText)}`
     : "";
 const has = (arr: any, v: string) => Array.isArray(arr) && arr.includes(v);
 ---
-<Layout title={g ? `${g.name} · Secret Santa` : "Групу не знайдено"} active="cabinet">
+<Layout title={g ? `${g.name} · Secret Santa` : t("g.notFound")} active="cabinet">
   <section class="wrap app">
     {
       !g ? (
         <div class="empty">
-          <h3>Групу не знайдено</h3>
-          <p>Можливо, організатор її видалив або код введено з помилкою.</p>
-          <a class="btn" href={u("/cabinet")}>До кабінету</a>
+          <h3>{t("g.notFound")}</h3>
+          <p>{t("g.notFound.p")}</p>
+          <a class="btn" href={u("/cabinet")}>{t("g.toCabinet")}</a>
         </div>
       ) : (
         <>
-          <a class="back" href={u("/cabinet")}>← До кабінету</a>
+          <a class="back" href={u("/cabinet")}>{t("back")}</a>
           <div class="app-head">
             <div>
-              <span class={`status ${g.drawn ? "drawn" : "open"}`}>{g.drawn ? "Жеребкування проведено" : "Збираємо учасників"}</span>
+              <span class={`status ${g.drawn ? "drawn" : "open"}`}>{g.drawn ? t("status.drawn") : t("status.open")}</span>
               <h1>{g.name}</h1>
               <div class="meta" style="margin-top:10px">
-                <span>Бюджет: <b>{g.budget || "—"}</b></span>
-                <span>Обмін: <b>{fmtDate(g.date)}</b></span>
-                <span>Організатор: <b>{g.owner_name || "—"}</b></span>
+                <span>{t("g.budget")} <b>{g.budget || "—"}</b></span>
+                <span>{t("g.date")} <b>{fmtDate(g.date)}</b></span>
+                <span>{t("g.org")} <b>{g.owner_name || "—"}</b></span>
               </div>
             </div>
             {isOwner && isMember && (
               <div class="tabs">
-                <a href={u(`/group/${code}?tab=admin`)} class={tab === "admin" ? "on" : ""}>Керування</a>
-                <a href={u(`/group/${code}?tab=me`)} class={tab === "me" ? "on" : ""}>Моя участь</a>
+                <a href={u(`/group/${code}?tab=admin`)} class={tab === "admin" ? "on" : ""}>{t("g.tab.admin")}</a>
+                <a href={u(`/group/${code}?tab=me`)} class={tab === "me" ? "on" : ""}>{t("g.tab.me")}</a>
               </div>
             )}
           </div>
@@ -223,56 +229,56 @@ const has = (arr: any, v: string) => Array.isArray(arr) && arr.includes(v);
               <div class="stack">
                 <div class="panel">
                   <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
-                    <h2>Учасники</h2>
-                    <span class="meta">Анкет заповнено: <b>{done} з {ms.length}</b></span>
+                    <h2>{t("g.members")}</h2>
+                    <span class="meta">{t("g.filled")} <b>{done} {t("g.of")} {ms.length}</b></span>
                   </div>
                   {ms.length ? (
                     <div class="members">
                       {ms.map((m) => (
                         <div class="member">
                           <Avatar name={m.name} icon={m.avatar_icon} color={m.avatar_color} />
-                          <div class="nm"><b>{m.name}{m.user_id === user.id ? " (ви)" : ""}</b><small>приєднався {ago(m.joined_at)}</small></div>
-                          <span class={`pill ${m.answered_at ? "ok" : "wait"}`}>{m.answered_at ? "Анкета готова" : "Чекаємо анкету"}</span>
+                          <div class="nm"><b>{m.name}{m.user_id === user.id ? t("g.you") : ""}</b><small>{t("g.joined", { ago: ago(m.joined_at) })}</small></div>
+                          <span class={`pill ${m.answered_at ? "ok" : "wait"}`}>{m.answered_at ? t("g.pill.ok") : t("g.pill.wait")}</span>
                           {!g.drawn && m.user_id !== user.id && (
-                            <form method="post" class="inline" data-confirm={`Прибрати ${m.name} з групи?`}>
+                            <form method="post" class="inline" data-confirm={t("g.removeConfirm", { name: m.name })}>
                               <input type="hidden" name="action" value="remove" />
                               <input type="hidden" name="member" value={m.user_id} />
-                              <button class="link" type="submit" style="font-size:12px;color:var(--danger)">прибрати</button>
+                              <button class="link" type="submit" style="font-size:12px;color:var(--danger)">{t("g.remove")}</button>
                             </form>
                           )}
                         </div>
                       ))}
                     </div>
                   ) : (
-                    <p style="color:var(--muted)">Поки що нікого. Надішліть код групи, і учасники з'являться тут, щойно приєднаються.</p>
+                    <p style="color:var(--muted)">{t("g.noMembers")}</p>
                   )}
                   {invites.length > 0 && (
                     <div>
-                      <div class="label" style="margin-bottom:6px">Запрошені на пошту</div>
+                      <div class="label" style="margin-bottom:6px">{t("g.invitedEmail")}</div>
                       <div class="chips">{invites.map((i) => <span class="pill mail">{i.email}</span>)}</div>
                     </div>
                   )}
                 </div>
 
                 <div class="panel">
-                  <h2>Жеребкування</h2>
+                  <h2>{t("g.draw")}</h2>
                   {g.drawn ? (
                     <>
-                      <p>Пари розподілено {ago(g.drawn_at)}. Кожен учасник бачить свою людину в розділі «Моя участь». Ви як організатор пар не бачите.</p>
-                      <form method="post" data-confirm="Усі пари зникнуть. Скинути жеребкування?">
+                      <p>{t("g.drawnText", { ago: ago(g.drawn_at) })}</p>
+                      <form method="post" data-confirm={t("g.resetConfirm")}>
                         <input type="hidden" name="action" value="reset" />
-                        <button class="btn danger" type="submit">Скинути жеребкування</button>
+                        <button class="btn danger" type="submit">{t("g.reset")}</button>
                       </form>
                     </>
                   ) : (
                     <>
                       <p style="color:var(--muted)">
-                        Потрібно щонайменше 3 учасники.
-                        {ms.length - done > 0 && ms.length > 0 && ` Ще ${ms.length - done} не заповнили анкету: можна провести жеребкування і зараз, відповіді підтягнуться пізніше.`}
+                        {t("g.need3")}
+                        {ms.length - done > 0 && ms.length > 0 && t("g.notFilled", { n: ms.length - done })}
                       </p>
-                      <form method="post" data-confirm="Провести жеребкування зараз?">
+                      <form method="post" data-confirm={t("g.drawConfirm")}>
                         <input type="hidden" name="action" value="draw" />
-                        <button class="btn rust" type="submit" disabled={ms.length < 3}>Провести жеребкування</button>
+                        <button class="btn rust" type="submit" disabled={ms.length < 3}>{t("g.drawBtn")}</button>
                       </form>
                     </>
                   )}
@@ -281,35 +287,35 @@ const has = (arr: any, v: string) => Array.isArray(arr) && arr.includes(v);
 
               <div class="stack">
                 <div class="panel">
-                  <h2>Запросити</h2>
+                  <h2>{t("g.invite")}</h2>
                   <div>
-                    <div class="label">Код групи</div>
+                    <div class="label">{t("g.code")}</div>
                     <div class="copyrow" style="margin-top:6px">
                       <span class="code" id="group-code">{g.code}</span>
-                      <button class="btn small ghost" type="button" data-copy="group-code">Копіювати</button>
+                      <button class="btn small ghost" type="button" data-copy="group-code">{t("g.copy")}</button>
                     </div>
                   </div>
                   <div class="field">
-                    <span class="lab">Текст запрошення</span>
+                    <span class="lab">{t("g.inviteText")}</span>
                     <div class="invite-text" id="inv-text">{invText}</div>
                     <div class="copyrow">
-                      <button class="btn small" type="button" data-copy="inv-text">Копіювати текст</button>
-                      <span class="hint" style="font-size:12px;color:var(--muted)">Додайте до нього посилання на сайт.</span>
+                      <button class="btn small" type="button" data-copy="inv-text">{t("g.copyText")}</button>
+                      <span class="hint" style="font-size:12px;color:var(--muted)">{t("g.addLink")}</span>
                     </div>
                   </div>
                   <form class="field" method="post">
                     <input type="hidden" name="action" value="invite" />
-                    <label for="m-emails">Запросити на пошту</label>
+                    <label for="m-emails">{t("g.emailInvite")}</label>
                     <textarea class="input" id="m-emails" name="emails" placeholder="anna@gmail.com, petro@ukr.net" style="min-height:64px"></textarea>
-                    <span class="hint">Адреси збережуться в списку запрошених, і з'явиться кнопка, що відкриє вашу пошту з готовим листом.</span>
-                    <div><button class="btn small ghost" type="submit">Зберегти адреси</button></div>
-                    {mailHref && <div class="mailbtn"><a class="btn small" href={mailHref}>Написати лист усім запрошеним</a></div>}
+                    <span class="hint">{t("g.emailHint")}</span>
+                    <div><button class="btn small ghost" type="submit">{t("g.saveEmails")}</button></div>
+                    {mailHref && <div class="mailbtn"><a class="btn small" href={mailHref}>{t("g.mailAll")}</a></div>}
                   </form>
                 </div>
 
                 {questions.length > 0 && (
                   <div class="panel">
-                    <h2>Питання учасників</h2>
+                    <h2>{t("g.questions")}</h2>
                     {questions.map((r) => (
                       <div><div class="label">{r.name}</div><p class="ans">{r.q}</p></div>
                     ))}
@@ -317,10 +323,10 @@ const has = (arr: any, v: string) => Array.isArray(arr) && arr.includes(v);
                 )}
 
                 <div class="panel">
-                  <h2>Налаштування</h2>
-                  <form method="post" data-confirm="Групу буде видалено для всіх. Продовжити?">
+                  <h2>{t("g.settings")}</h2>
+                  <form method="post" data-confirm={t("g.deleteConfirm")}>
                     <input type="hidden" name="action" value="delete" />
-                    <button class="btn danger small" type="submit">Видалити групу</button>
+                    <button class="btn danger small" type="submit">{t("g.delete")}</button>
                   </form>
                 </div>
               </div>
@@ -330,9 +336,9 @@ const has = (arr: any, v: string) => Array.isArray(arr) && arr.includes(v);
           {/* ---------------- not a member ---------------- */}
           {!isMember && !isOwner && (
             <div class="empty">
-              <h3>Ви ще не учасник цієї групи</h3>
-              <p>Приєднайтеся, щоб заповнити анкету й узяти участь у жеребкуванні.</p>
-              {g.drawn ? <p>Жеребкування вже проведено.</p> : <a class="btn" href={u(`/join?code=${g.code}`)}>Приєднатися</a>}
+              <h3>{t("g.notMember.h")}</h3>
+              <p>{t("g.notMember.p")}</p>
+              {g.drawn ? <p>{t("g.alreadyDrawn")}</p> : <a class="btn" href={u(`/join?code=${g.code}`)}>{t("g.joinBtn")}</a>}
             </div>
           )}
 
@@ -343,109 +349,109 @@ const has = (arr: any, v: string) => Array.isArray(arr) && arr.includes(v);
                 {g.drawn && rec ? (
                   <div class="reveal">
                     <Avatar name={rec.name} icon={rec.avatar_icon} color={rec.avatar_color} size="lg" />
-                    <div class="label">Ви Таємний Санта для</div>
+                    <div class="label">{t("g.reveal.label")}</div>
                     <h2>{rec.name}</h2>
-                    <p>Нікому не кажіть. Відповіді цієї людини й адреса доставки в картці поруч.</p>
+                    <p>{t("g.reveal.p")}</p>
                   </div>
                 ) : (
                   <div class="panel" style="flex-direction:row;gap:14px;align-items:center">
                     <svg width="28" height="28" style="color:var(--gold);flex:none"><use href="#gift"></use></svg>
-                    <p>{g.drawn ? "Жеребкування проведено без вас. Зверніться до організатора." : "Жеребкування ще не проведено. Заповніть анкету, щоб ваш Санта знав, що вам подарувати."}</p>
+                    <p>{g.drawn ? t("g.drawnWithout") : t("g.notDrawn")}</p>
                   </div>
                 )}
 
                 <form class="panel" method="post">
                   <input type="hidden" name="action" value="avatar" />
-                  <h2>Мій аватар</h2>
+                  <h2>{t("g.myAvatar")}</h2>
                   <AvatarPicker prefix="p" icon={me.avatar_icon} color={me.avatar_color} />
-                  <div><button class="btn small ghost" type="submit">Зберегти аватар</button></div>
+                  <div><button class="btn small ghost" type="submit">{t("g.saveAvatar")}</button></div>
                 </form>
 
                 <form class="panel" method="post" id="qf" novalidate>
                   <input type="hidden" name="action" value="answers" />
                   <div>
-                    <h2>Моя анкета</h2>
-                    <p style="color:var(--muted);font-size:14px;margin-top:6px">Опишіть змістовно, що ви хотіли б отримати: чим детальніше, тим легше вашому Санті. Відповіді бачить лише ваш Санта, змінювати їх можна будь-коли до свята.</p>
+                    <h2>{t("g.myForm")}</h2>
+                    <p style="color:var(--muted);font-size:14px;margin-top:6px">{t("g.myForm.p")}</p>
                   </div>
 
                   <div class="qsec"><span class="qn">1</span><div class="field">
-                    <span class="lab">{Q.fandoms} <i class="req">*</i></span>
-                    <span class="hint">Будь-що: фільми, серіали, книги, ігри, аніме, музика. Позначте зі списку та допишіть свої. Чим більше, тим краще.</span>
-                    <label class="check nofandom"><input type="checkbox" id="noFandom" name="noFandom" value="1" checked={!!a.noFandom} /> Я не фанатію від фандомів, краще опишу побажання</label>
+                    <span class="lab">{t("q.fandoms")} <i class="req">*</i></span>
+                    <span class="hint">{t("g.q1.hint")}</span>
+                    <label class="check nofandom"><input type="checkbox" id="noFandom" name="noFandom" value="1" checked={!!a.noFandom} /> {t("g.noFandom")}</label>
                     <div id="fandom-block" hidden={!!a.noFandom} style="display:flex;flex-direction:column;gap:8px">
                       <div class="seg">
                         {FANDOMS.map((m, i) => (
-                          <label><input type="checkbox" name="fandomTags" id={`fd-${i}`} value={m} checked={has(a.fandomTags, m)} /><span>{m}</span></label>
+                          <label><input type="checkbox" name="fandomTags" id={`fd-${i}`} value={m} checked={has(a.fandomTags, m)} /><span>{L(m)}</span></label>
                         ))}
                       </div>
-                      <textarea class="input" name="fandoms" aria-label={Q.fandomsText} placeholder="Свої фандоми та деталі: «Сутінки», Arcane, Фрірен, Stray Kids, тайські серіали…">{a.fandoms || ""}</textarea>
+                      <textarea class="input" name="fandoms" aria-label={t("q.fandomsText")} placeholder={t("g.fandomsPh")}>{a.fandoms || ""}</textarea>
                     </div>
                   </div></div>
 
                   <div class="qsec" id="chars-sec" hidden={!!a.noFandom}><span class="qn">2</span><div class="field">
-                    <label for="chars">{Q.chars}</label>
-                    <span class="hint">Якщо є фаворити, обов'язково виділіть. Якщо ні, напишіть, що цікавить загалом усе.</span>
-                    <textarea class="input" id="chars" name="chars" placeholder="Локі, Герміона, Геральт, Йосан…">{a.chars || ""}</textarea>
+                    <label for="chars">{t("q.chars")}</label>
+                    <span class="hint">{t("g.q2.hint")}</span>
+                    <textarea class="input" id="chars" name="chars" placeholder={t("g.charsPh")}>{a.chars || ""}</textarea>
                   </div></div>
 
                   <div class="qsec"><span class="qn">3</span><div class="field">
-                    <span class="lab">{Q.merch} <i class="req">*</i></span>
-                    <span class="hint">Мерч або звичайні подарунки: позначте все, що любите.</span>
+                    <span class="lab">{t("q.merch")} <i class="req">*</i></span>
+                    <span class="hint">{t("g.q3.hint")}</span>
                     <div class="seg">
                       {MERCH.map((m, i) => (
-                        <label><input type="checkbox" name="merch" id={`merch-${i}`} value={m} checked={has(a.merch, m)} /><span>{m}</span></label>
+                        <label><input type="checkbox" name="merch" id={`merch-${i}`} value={m} checked={has(a.merch, m)} /><span>{L(m)}</span></label>
                       ))}
                     </div>
-                    <input class="input" name="merchOther" value={a.merchOther || ""} placeholder="Інше: свічки, пазли, вінілові платівки…" style="margin-top:6px" />
+                    <input class="input" name="merchOther" value={a.merchOther || ""} placeholder={t("g.merchPh")} style="margin-top:6px" />
                   </div></div>
 
                   <div class="qsec"><span class="qn">4</span><div class="field">
-                    <label for="wishes">{Q.wishes} <i class="req" id="wish-req" hidden={!a.noFandom}>*</i></label>
-                    <span class="hint">Супер конкретні побажання або готовий вішліст. Не соромтесь! Якщо ви без фандомів, опишіть тут свої інтереси й хобі.</span>
-                    <textarea class="input" id="wishes" name="wishes" placeholder="Люблю каву, настолки й похід у гори. Мрію про набір лего з сукулентиками…">{a.wishes || ""}</textarea>
-                    <textarea class="input" name="links" placeholder="Посилання на бажані речі, кожне з нового рядка" style="min-height:60px;margin-top:6px">{a.links || ""}</textarea>
+                    <label for="wishes">{t("q.wishes")} <i class="req" id="wish-req" hidden={!a.noFandom}>*</i></label>
+                    <span class="hint">{t("g.q4.hint")}</span>
+                    <textarea class="input" id="wishes" name="wishes" placeholder={t("g.wishesPh")}>{a.wishes || ""}</textarea>
+                    <textarea class="input" name="links" placeholder={t("g.linksPh")} style="min-height:60px;margin-top:6px">{a.links || ""}</textarea>
                   </div></div>
 
                   <div class="qsec"><span class="qn">5</span><div class="field">
-                    <label for="avoid">{Q.avoid} <i class="req">*</i></label>
-                    <span class="hint">Певний фандом, вид мерчу, персонажі чи пейринг. Це дуже важливо.</span>
-                    <textarea class="input" id="avoid" name="avoid" placeholder="Не хотілося б чашку і значки">{a.avoid || ""}</textarea>
+                    <label for="avoid">{t("q.avoid")} <i class="req">*</i></label>
+                    <span class="hint">{t("g.q5.hint")}</span>
+                    <textarea class="input" id="avoid" name="avoid" placeholder={t("g.avoidPh")}>{a.avoid || ""}</textarea>
                   </div></div>
 
                   <div class="agree">
-                    <p>Таємний Санта означає стати для когось різдвяним дивом. Вам може випасти людина, з якою у вас не збігаються смаки на фандоми чи персонажів, але ви все одно поважаєте її вибір і обираєте подарунок з урахуванням її вподобань.</p>
-                    <label class="check"><input type="checkbox" name="agree" value="1" checked={!!a.agree} /> Я розумію це та погоджуюсь <i class="req">*</i></label>
+                    <p>{t("g.agree.p")}</p>
+                    <label class="check"><input type="checkbox" name="agree" value="1" checked={!!a.agree} /> {t("g.agree")} <i class="req">*</i></label>
                   </div>
 
                   <div class="qsec"><span class="qn">6</span><div class="field" style="gap:12px">
-                    <span class="lab">Куди надіслати ваш подарунок <i class="req">*</i></span>
-                    <span class="hint">Враховуйте безпекову ситуацію вашого населеного пункту. Ці дані побачить лише ваш Санта після жеребкування.</span>
-                    <div class="field"><label for="fio">{Q.fio}</label><input class="input" id="fio" name="fio" value={a.fio || ""} autocomplete="name" /></div>
+                    <span class="lab">{t("g.q6")} <i class="req">*</i></span>
+                    <span class="hint">{t("g.q6.hint")}</span>
+                    <div class="field"><label for="fio">{t("q.fio")}</label><input class="input" id="fio" name="fio" value={a.fio || ""} autocomplete="name" /></div>
                     <div class="row">
-                      <div class="field"><label for="city">{Q.city}</label><input class="input" id="city" name="city" value={a.city || ""} /></div>
-                      <div class="field"><label for="phone">{Q.phone}</label><input class="input" id="phone" name="phone" type="tel" value={a.phone || ""} placeholder="+380…" autocomplete="tel" /></div>
+                      <div class="field"><label for="city">{t("q.city")}</label><input class="input" id="city" name="city" value={a.city || ""} /></div>
+                      <div class="field"><label for="phone">{t("q.phone")}</label><input class="input" id="phone" name="phone" type="tel" value={a.phone || ""} placeholder="+380…" autocomplete="tel" /></div>
                     </div>
                     <div class="field">
-                      <span class="lab">{Q.carrier}</span>
+                      <span class="lab">{t("q.carrier")}</span>
                       <div class="seg" role="radiogroup">
                         {CARRIERS.map((c, i) => (
-                          <label><input type="radio" name="carrier" id={`carrier-${i}`} value={c} checked={a.carrier === c} /><span>{c}</span></label>
+                          <label><input type="radio" name="carrier" id={`carrier-${i}`} value={c} checked={a.carrier === c} /><span>{L(c)}</span></label>
                         ))}
                       </div>
                     </div>
-                    <div class="field"><label for="branch">{Q.branch}</label><input class="input" id="branch" name="branch" value={a.branch || ""} placeholder="Відділення №12 або поштомат №3456; для Укрпошти індекс" /></div>
+                    <div class="field"><label for="branch">{t("q.branch")}</label><input class="input" id="branch" name="branch" value={a.branch || ""} placeholder={t("g.branchPh")} /></div>
                   </div></div>
 
                   <div class="qsec"><span class="qn">7</span><div class="field">
-                    <label for="question">{Q.question}</label>
-                    <span class="hint">Якщо лишились запитання щодо заходу. Їх побачить лише організатор.</span>
+                    <label for="question">{t("q.question")}</label>
+                    <span class="hint">{t("g.q7.hint")}</span>
                     <textarea class="input" id="question" name="question" style="min-height:60px">{a.question || ""}</textarea>
                   </div></div>
 
                   {formErr && <p class="err">{formErr}</p>}
                   <div class="copyrow">
-                    <button class="btn" type="submit">{myUpdated ? "Оновити анкету" : "Зберегти анкету"}</button>
-                    {myUpdated && <span class="hint" style="font-size:12px;color:var(--muted)">Збережено {ago(myUpdated)}</span>}
+                    <button class="btn" type="submit">{myUpdated ? t("g.update") : t("g.save")}</button>
+                    {myUpdated && <span class="hint" style="font-size:12px;color:var(--muted)">{t("g.savedAgo", { ago: ago(myUpdated) })}</span>}
                   </div>
                 </form>
               </div>
@@ -455,25 +461,25 @@ const has = (arr: any, v: string) => Array.isArray(arr) && arr.includes(v);
                   <PrefCard member={rec} answer={parseAnswer(recRow)} updatedAt={recRow?.updated_at} showDelivery={true} />
                 ) : (
                   <>
-                    <div class="panel"><h2>Що побачить ваш Санта</h2><p style="color:var(--muted);font-size:14px">Так виглядатиме ваша картка після жеребкування.</p></div>
+                    <div class="panel"><h2>{t("g.preview.h")}</h2><p style="color:var(--muted);font-size:14px">{t("g.preview.p")}</p></div>
                     <PrefCard member={me} answer={myUpdated ? parseAnswer(myRow) : null} updatedAt={myUpdated} showDelivery={true} />
                   </>
                 )}
                 <div class="panel">
-                  <h2>Учасники</h2>
+                  <h2>{t("g.members")}</h2>
                   <div class="members">
                     {ms.map((m) => (
                       <div class="member">
                         <Avatar name={m.name} icon={m.avatar_icon} color={m.avatar_color} />
-                        <div class="nm"><b>{m.name}{m.user_id === user.id ? " (ви)" : ""}</b></div>
-                        <span class={`pill ${m.answered_at ? "ok" : "wait"}`}>{m.answered_at ? "Анкета готова" : "Чекаємо"}</span>
+                        <div class="nm"><b>{m.name}{m.user_id === user.id ? t("g.you") : ""}</b></div>
+                        <span class={`pill ${m.answered_at ? "ok" : "wait"}`}>{m.answered_at ? t("g.pill.ok") : t("g.pill.waitShort")}</span>
                       </div>
                     ))}
                   </div>
                   {!g.drawn && !isOwner && (
-                    <form method="post" data-confirm="Вийти з групи?">
+                    <form method="post" data-confirm={t("g.leaveConfirm")}>
                       <input type="hidden" name="action" value="leave" />
-                      <button class="link" type="submit" style="color:var(--danger);font-size:13px">Вийти з групи</button>
+                      <button class="link" type="submit" style="color:var(--danger);font-size:13px">{t("g.leave")}</button>
                     </form>
                   )}
                 </div>

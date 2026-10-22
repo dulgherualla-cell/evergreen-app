@@ -2,10 +2,12 @@
 import Layout from "../layouts/Layout.astro";
 import BrandPanel from "../components/BrandPanel.astro";
 import { u, str, emailOk, safeNext } from "../lib/util";
+import { makeT } from "../lib/i18n";
 import { one } from "../lib/db";
 import { verifyPassword, createSession } from "../lib/auth";
 
 const locals = Astro.locals as any;
+const t = makeT(locals.lang ?? "uk");
 const next = safeNext(Astro.url.searchParams.get("next"));
 if (locals.user) return Astro.redirect(u(next));
 
@@ -15,11 +17,11 @@ if (Astro.request.method === "POST" && locals.db) {
   const fd = await Astro.request.formData();
   email = str(fd, "email", 120).toLowerCase();
   const pass = String(fd.get("password") || "").slice(0, 200);
-  if (!emailOk(email)) err = "Перевірте email.";
+  if (!emailOk(email)) err = t("signin.err.email");
   else {
     const row = await one<any>(locals.db, "SELECT id, pass_hash, pass_salt FROM users WHERE email = ?", email);
     if (!row || !(await verifyPassword(pass, row.pass_hash, row.pass_salt))) {
-      err = "Невірна пошта або пароль.";
+      err = t("signin.err.bad");
     } else {
       await createSession(locals.db, row.id, Astro.cookies, Astro.url.protocol === "https:");
       return Astro.redirect(u(next));
@@ -27,19 +29,19 @@ if (Astro.request.method === "POST" && locals.db) {
   }
 }
 ---
-<Layout title="Вхід · Secret Santa">
+<Layout title={`${t("signin.title")} · Secret Santa`}>
   <section class="auth">
     <BrandPanel />
     <div class="auth-side">
       <form class="auth-card" method="post" novalidate>
-        <h1>З поверненням!</h1>
-        <p style="color:var(--muted)">Увійдіть, щоб відкрити свої розіграші та анкету.</p>
+        <h1>{t("signin.h1")}</h1>
+        <p style="color:var(--muted)">{t("signin.lead")}</p>
         {err && <p class="err">{err}</p>}
-        <div class="field"><label for="si-email">Email</label><input class="input" id="si-email" name="email" type="email" autocomplete="email" value={email} required /></div>
-        <div class="field"><label for="si-pass">Пароль</label><input class="input" id="si-pass" name="password" type="password" autocomplete="current-password" required /></div>
-        <button class="btn block" type="submit">Увійти</button>
-        <div class="center-row"><span>Ще немає акаунта?</span><a class="link" href={u(`/signup?next=${encodeURIComponent(next)}`)}>Зареєструватися</a></div>
-        <p class="demo">Забули пароль? Напишіть організатору сайту: відновлення через пошту з'явиться згодом.</p>
+        <div class="field"><label for="si-email">{t("signup.email")}</label><input class="input" id="si-email" name="email" type="email" autocomplete="email" value={email} required /></div>
+        <div class="field"><label for="si-pass">{t("signup.pass")}</label><input class="input" id="si-pass" name="password" type="password" autocomplete="current-password" required /></div>
+        <button class="btn block" type="submit">{t("signin.submit")}</button>
+        <div class="center-row"><span>{t("signin.none")}</span><a class="link" href={u(`/signup?next=${encodeURIComponent(next)}`)}>{t("signin.register")}</a></div>
+        <p class="demo">{t("signin.forgot")}</p>
       </form>
     </div>
   </section>

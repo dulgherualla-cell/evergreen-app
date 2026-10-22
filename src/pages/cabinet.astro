@@ -1,67 +1,70 @@
 ---
 import Layout from "../layouts/Layout.astro";
-import { u, fmtDate } from "../lib/util";
+import { u } from "../lib/util";
+import { makeT, fmtDateL } from "../lib/i18n";
 import { ownedGroups, memberGroups } from "../lib/groups";
 
 const locals = Astro.locals as any;
 const user = locals.user;
+const lang = locals.lang ?? "uk";
+const t = makeT(lang);
 if (!user) return Astro.redirect(u("/signin?next=/cabinet"));
 
 const tab = Astro.url.searchParams.get("tab") === "part" ? "part" : "admin";
 const list = locals.db ? (tab === "admin" ? await ownedGroups(locals.db, user.id) : await memberGroups(locals.db, user.id)) : [];
 const msg = Astro.url.searchParams.get("msg");
-const MSGS: Record<string, string> = { deleted: "Групу видалено.", left: "Ви вийшли з групи." };
+const flash = msg === "deleted" ? t("cab.msg.deleted") : msg === "left" ? t("cab.msg.left") : "";
 ---
-<Layout title="Мій кабінет · Secret Santa" active="cabinet">
+<Layout title={`${t("cab.title")} · Secret Santa`} active="cabinet">
   <section class="wrap app">
     <div class="app-head">
       <div>
-        <span class="eyebrow"><svg><use href="#spark"></use></svg>Мій кабінет</span>
-        <h1>Вітаємо, {user.name}</h1>
+        <span class="eyebrow"><svg><use href="#spark"></use></svg>{t("cab.eyebrow")}</span>
+        <h1>{t("cab.hello", { name: user.name })}</h1>
       </div>
       <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center">
-        <form method="post" action={u("/signout")} class="inline"><button class="link" type="submit" style="font-size:13px">Вийти з акаунта</button></form>
+        <form method="post" action={u("/signout")} class="inline"><button class="link" type="submit" style="font-size:13px">{t("cab.signout")}</button></form>
         <div class="tabs" role="tablist">
-          <a href={u("/cabinet?tab=admin")} class={tab === "admin" ? "on" : ""}>Я організатор</a>
-          <a href={u("/cabinet?tab=part")} class={tab === "part" ? "on" : ""}>Я учасник</a>
+          <a href={u("/cabinet?tab=admin")} class={tab === "admin" ? "on" : ""}>{t("cab.tab.admin")}</a>
+          <a href={u("/cabinet?tab=part")} class={tab === "part" ? "on" : ""}>{t("cab.tab.part")}</a>
         </div>
       </div>
     </div>
 
-    {msg && MSGS[msg] && <p class="flash ok">{MSGS[msg]}</p>}
+    {flash && <p class="flash ok">{flash}</p>}
 
     {
       list.length ? (
         <div class="grid">
           {list.map((g) => (
             <a class="gcard" href={u(`/group/${g.code}${tab === "part" ? "?tab=me" : ""}`)}>
-              <span class={`status ${g.drawn ? "drawn" : "open"}`}>{g.drawn ? "Жеребкування проведено" : "Збираємо учасників"}</span>
+              <span class={`status ${g.drawn ? "drawn" : "open"}`}>{g.drawn ? t("status.drawn") : t("status.open")}</span>
               <h3>{g.name}</h3>
               <div class="meta">
-                <span>Учасників: <b>{g.member_count}</b></span>
-                <span>Анкет: <b>{g.answer_count}/{g.member_count}</b></span>
-                <span>Бюджет: <b>{g.budget || "—"}</b></span>
-                <span>Обмін: <b>{fmtDate(g.date)}</b></span>
+                <span>{t("cab.members")} <b>{g.member_count}</b></span>
+                <span>{t("cab.answers")} <b>{g.answer_count}/{g.member_count}</b></span>
+                <span>{t("cab.budget")} <b>{g.budget || "—"}</b></span>
+                <span>{t("cab.date")} <b>{fmtDateL(lang, g.date)}</b></span>
               </div>
               {tab === "admin" ? (
-                <span class="meta">Код: <b>{g.code}</b></span>
+                <span class="meta">{t("cab.code")} <b>{g.code}</b></span>
               ) : g.owner_id === user.id ? (
-                <span class="meta">Ви організатор</span>
+                <span class="meta">{t("cab.youOrg")}</span>
               ) : null}
             </a>
           ))}
         </div>
       ) : tab === "admin" ? (
         <div class="empty">
-          <h3>Ще немає розіграшів</h3>
-          <p>Створіть першу групу: задайте бюджет і дату, а потім надішліть учасникам код або запрошення на пошту.</p>
-          <a class="btn" href={u("/create")}>Створити розіграш</a>
+          <h3>{t("cab.empty.admin.h")}</h3>
+          <p>{t("cab.empty.admin.p")}</p>
+          <a class="btn" href={u("/create")}>{t("nav.create")}</a>
         </div>
       ) : (
         <div class="empty">
-          <h3>Ви ще не в жодній групі</h3>
-          <p>Попросіть в організатора шестизначний код і введіть його тут.</p>
-          <a class="btn" href={u("/join")}>Приєднатися за кодом</a>
+          <h3>{t("cab.empty.part.h")}</h3>
+          <p>{t("cab.empty.part.p")}</p>
+          <a class="btn" href={u("/join")}>{t("cab.join")}</a>
         </div>
       )
     }
@@ -69,8 +72,8 @@ const MSGS: Record<string, string> = { deleted: "Групу видалено.", 
     {
       list.length > 0 && (
         <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:28px">
-          <a class="btn" href={u("/create")}>Новий розіграш</a>
-          <a class="btn ghost" href={u("/join")}>Приєднатися за кодом</a>
+          <a class="btn" href={u("/create")}>{t("cab.new")}</a>
+          <a class="btn ghost" href={u("/join")}>{t("cab.join")}</a>
         </div>
       )
     }

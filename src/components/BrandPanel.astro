@@ -1,15 +1,17 @@
 ---
 import Avatar from "./Avatar.astro";
+import { makeT } from "../lib/i18n";
+const t = makeT((Astro.locals as any).lang ?? "uk");
 const stack = [["heart", "#b8684f"], ["snowman", "#6f9bb4"], ["star", "#d4a359"], ["tree", "#3e5643"]];
 ---
 <aside class="auth-brand">
   <span class="logo logo-script" style="color:#fff">Secret Santa</span>
   <div>
     <h2>Secret Santa</h2>
-    <p>Організуйте обмін подарунками для родини, друзів чи колег. Кілька груп, анкети побажань і жеребкування в одному кабінеті.</p>
+    <p>{t("brand.text")}</p>
   </div>
   <div class="stack-av">
     <span class="row">{stack.map(([icon, color]) => <Avatar icon={icon} color={color} />)}</span>
-    <span style="margin-left:10px">Створюйте групи та запрошуйте близьких</span>
+    <span style="margin-left:10px">{t("brand.stack")}</span>
   </div>
 </aside>

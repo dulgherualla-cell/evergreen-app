@@ -2,6 +2,7 @@
 import "../styles/app.css";
 import Avatar from "../components/Avatar.astro";
 import { u } from "../lib/util";
+import { makeT, landing } from "../lib/i18n";
 
 interface Props {
   title?: string;
@@ -10,9 +11,15 @@ interface Props {
 const { title = "Secret Santa", active = "" } = Astro.props;
 const user = (Astro.locals as any).user;
 const dbError = (Astro.locals as any).dbError;
+const lang = (Astro.locals as any).lang ?? "uk";
+const t = makeT(lang);
+const other = lang === "en" ? "uk" : "en";
+const sw = new URL(Astro.url);
+sw.searchParams.set("lang", other);
+const switchHref = sw.pathname + sw.search;
 ---
 <!doctype html>
-<html lang="uk">
+<html lang={lang}>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
@@ -45,11 +52,11 @@ const dbError = (Astro.locals as any).dbError;
 
     <nav class="nav">
       <div class="wrap">
-        <a class="logo logo-script" href="/">Secret Santa</a>
+        <a class="logo logo-script" href={landing(lang)}>Secret Santa</a>
         <div class="navlinks">
-          <a class="plain hide-m" href="/#how">Як це працює</a>
-          <a class="plain hide-m" href="/#features">Опитувальник</a>
-          <a class={`plain ${active === "cabinet" ? "on" : ""}`} href={u("/cabinet")}>Мій кабінет</a>
+          <a class="plain hide-m" href={landing(lang, "#how")}>{t("nav.how")}</a>
+          <a class="plain hide-m" href={landing(lang, "#features")}>{t("nav.quiz")}</a>
+          <a class={`plain ${active === "cabinet" ? "on" : ""}`} href={u("/cabinet")}>{t("nav.cabinet")}</a>
           {
             user ? (
               <a class="userchip" href={u("/cabinet")}>
@@ -57,20 +64,21 @@ const dbError = (Astro.locals as any).dbError;
                 <span class="hide-m">{user.name}</span>
               </a>
             ) : (
-              <a class="plain" href={u("/signin")}>Увійти</a>
+              <a class="plain" href={u("/signin")}>{t("nav.signin")}</a>
             )
           }
-          <a class="btn small" href={u("/create")}>Створити розіграш</a>
+          <a class="btn small" href={u("/create")}>{t("nav.create")}</a>
+          <a class="langsw" href={switchHref} hreflang={other} aria-label={other === "en" ? "English" : "Українська"}>{t("nav.switch")}</a>
         </div>
       </div>
     </nav>
 
     <main>
-      {dbError && <div class="wrap" style="padding-top:24px"><p class="flash bad">Сховище даних недоступне: {dbError}</p></div>}
+      {dbError && <div class="wrap" style="padding-top:24px"><p class="flash bad">{t("db.down", { e: dbError })}</p></div>}
       <slot />
     </main>
 
-    <script is:inline>
+    <script is:inline define:vars={{ copiedLabel: t("g.copied") }}>
       // Avatar picker: live preview of the chosen icon/colour.
       document.querySelectorAll("[data-avpick]").forEach(function (box) {
         var prev = box.querySelector(".avprev .avatar");
@@ -101,8 +109,8 @@ const dbError = (Astro.locals as any).dbError;
         btn.addEventListener("click", function () {
           var src = document.getElementById(btn.getAttribute("data-copy"));
           var text = src ? (src.value || src.textContent) : "";
-          var done = function () { var t = btn.textContent; btn.textContent = "Скопійовано"; setTimeout(function () { btn.textContent = t; }, 1600); };
-          if (navigator.clipboard) navigator.clipboard.writeText(text).then(done, function () { alert("Виділіть текст і скопіюйте вручну"); });
+          var done = function () { var t = btn.textContent; btn.textContent = copiedLabel; setTimeout(function () { btn.textContent = t; }, 1600); };
+          if (navigator.clipboard) navigator.clipboard.writeText(text).then(done, function () { alert(text); });
         });
       });
       // Confirm destructive forms.
