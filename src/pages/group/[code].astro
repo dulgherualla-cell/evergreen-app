@@ -7,6 +7,7 @@ import { u, str, validAvatar, emailOk, FANDOMS, MERCH, CARRIERS } from "../../li
 import { makeT, label, fmtDateL, agoL, inviteTextL } from "../../lib/i18n";
 import { all, one, run } from "../../lib/db";
 import { getGroup, groupMembers, parseAnswer } from "../../lib/groups";
+import { MAX_PHOTOS, ownedPhotoIds, dropUnusedPhotos } from "../../lib/photos";
 
 const locals = Astro.locals as any;
 const user = locals.user;
@@ -35,6 +36,7 @@ if (Astro.request.method === "POST" && db && g) {
     const mid = str(fd, "member", 40);
     if (mid && mid !== user.id) {
       await run(db, "DELETE FROM answers WHERE group_code = ? AND user_id = ?", code, mid);
+      await run(db, "DELETE FROM photos WHERE group_code = ? AND user_id = ?", code, mid);
       await run(db, "DELETE FROM members WHERE group_code = ? AND user_id = ?", code, mid);
     }
     return back("?tab=admin&msg=removed");
@@ -80,6 +82,7 @@ if (Astro.request.method === "POST" && db && g) {
     await db.batch([
       db.prepare("DELETE FROM pairs WHERE group_code = ?").bind(code),
       db.prepare("DELETE FROM answers WHERE group_code = ?").bind(code),
+      db.prepare("DELETE FROM photos WHERE group_code = ?").bind(code),
       db.prepare("DELETE FROM invites WHERE group_code = ?").bind(code),
       db.prepare("DELETE FROM members WHERE group_code = ?").bind(code),
       db.prepare("DELETE FROM groups WHERE code = ?").bind(code),
@@ -95,6 +98,7 @@ if (Astro.request.method === "POST" && db && g) {
 
   if (isMember && action === "leave" && !g.drawn && !isOwner) {
     await run(db, "DELETE FROM answers WHERE group_code = ? AND user_id = ?", code, user.id);
+    await run(db, "DELETE FROM photos WHERE group_code = ? AND user_id = ?", code, user.id);
     await run(db, "DELETE FROM members WHERE group_code = ? AND user_id = ?", code, user.id);
     return Astro.redirect(u("/cabinet?tab=part&msg=left"));
   }
@@ -112,6 +116,7 @@ if (Astro.request.method === "POST" && db && g) {
       merchOther: str(fd, "merchOther", 300),
       wishes: str(fd, "wishes", 3000),
       links: str(fd, "links", 3000),
+      photos: await ownedPhotoIds(db, code, user.id, fd.getAll("photos").map(String)),
       avoid: str(fd, "avoid", 2000),
       agree: !!fd.get("agree"),
       fio: str(fd, "fio", 120),
@@ -122,7 +127,7 @@ if (Astro.request.method === "POST" && db && g) {
       question: str(fd, "question", 2000),
     };
     const miss: string[] = [];
-    if (noF) { if (!ans.wishes) miss.push(t("g.miss.wishes")); }
+    if (noF) { if (!ans.wishes && !ans.photos.length) miss.push(t("g.miss.wishes")); }
     else if (!ans.fandoms && !ans.fandomTags.length) miss.push(t("g.miss.fandoms"));
     if (!ans.merch.length && !ans.merchOther) miss.push(t("g.miss.merch"));
     if (!ans.avoid) miss.push(t("g.miss.avoid"));
@@ -138,6 +143,7 @@ if (Astro.request.method === "POST" && db && g) {
          ON CONFLICT(group_code, user_id) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at`,
         code, user.id, JSON.stringify(ans), Date.now()
       );
+      await dropUnusedPhotos(db, code, user.id, ans.photos);
       return back("?tab=me&msg=saved");
     }
   }
@@ -190,6 +196,7 @@ const mailHref =
     ? `mailto:${invites.map((i) => i.email).join(",")}?subject=${encodeURIComponent(t("g.mailSubject", { name: g.name }))}&body=${encodeURIComponent(invText)}`
     : "";
 const has = (arr: any, v: string) => Array.isArray(arr) && arr.includes(v);
+const myPhotos: string[] = Array.isArray(a.photos) ? a.photos : [];
 ---
 <Layout title={g ? `${g.name} · Secret Santa` : t("g.notFound")} active="cabinet">
   <section class="wrap app">
@@ -410,6 +417,25 @@ const has = (arr: any, v: string) => Array.isArray(arr) && arr.includes(v);
                     <span class="hint">{t("g.q4.hint")}</span>
                     <textarea class="input" id="wishes" name="wishes" placeholder={t("g.wishesPh")}>{a.wishes || ""}</textarea>
                     <textarea class="input" name="links" placeholder={t("g.linksPh")} style="min-height:60px;margin-top:6px">{a.links || ""}</textarea>
+                    <div class="photos" data-photos data-upload={u(`/photo?g=${code}`)} data-max={MAX_PHOTOS}>
+                      <span class="lab" style="margin-top:8px">{t("g.photos")}</span>
+                      <span class="hint">{t("g.photos.hint", { n: MAX_PHOTOS })}</span>
+                      <div class="ph-grid">
+                        {myPhotos.map((id) => (
+                          <div class="ph">
+                            <img src={u(`/photo/${id}`)} alt="" loading="lazy" />
+                            <input type="hidden" name="photos" value={id} />
+                            <button type="button" class="ph-x" aria-label={t("g.photos.remove")}>×</button>
+                          </div>
+                        ))}
+                        <label class="ph-add" hidden={myPhotos.length >= MAX_PHOTOS}>
+                          <input type="file" accept="image/*" multiple />
+                          <svg width="22" height="22" aria-hidden="true"><use href="#plus"></use></svg>
+                          <span>{t("g.photos.add")}</span>
+                        </label>
+                      </div>
+                      <p class="err" data-ph-err hidden></p>
+                    </div>
                   </div></div>
 
                   <div class="qsec"><span class="qn">5</span><div class="field">
@@ -490,4 +516,70 @@ const has = (arr: any, v: string) => Array.isArray(arr) && arr.includes(v);
       )
     }
   </section>
+  <script is:inline define:vars={{ phL: { removeL: t("g.photos.remove"), upL: t("g.photos.uploading"), errL: t("g.photos.err"), maxL: t("g.photos.max", { n: MAX_PHOTOS }) } }}>
+    // Wish photos: shrink in the browser, upload right away, keep the ids in the form.
+    document.querySelectorAll("[data-photos]").forEach(function (box) {
+      var grid = box.querySelector(".ph-grid"), add = box.querySelector(".ph-add"), input = add.querySelector("input");
+      var errEl = box.querySelector("[data-ph-err]"), max = +box.dataset.max, form = box.closest("form");
+      var btn = form && form.querySelector('button[type="submit"]'), busy = 0;
+      function count() { return grid.querySelectorAll(".ph").length; }
+      function refresh() {
+        add.hidden = count() >= max;
+        if (btn) btn.disabled = busy > 0;
+      }
+      function err(m) { errEl.textContent = m || ""; errEl.hidden = !m; }
+      grid.addEventListener("click", function (e) {
+        var x = e.target.closest(".ph-x");
+        if (x) { x.closest(".ph").remove(); err(""); refresh(); }
+      });
+      function shrink(file, side, q) {
+        return new Promise(function (ok, bad) {
+          var url = URL.createObjectURL(file), img = new Image();
+          img.onload = function () {
+            var k = Math.min(1, side / Math.max(img.naturalWidth, img.naturalHeight));
+            var c = document.createElement("canvas");
+            c.width = Math.max(1, Math.round(img.naturalWidth * k));
+            c.height = Math.max(1, Math.round(img.naturalHeight * k));
+            var cx = c.getContext("2d");
+            cx.fillStyle = "#fff"; cx.fillRect(0, 0, c.width, c.height);
+            cx.drawImage(img, 0, 0, c.width, c.height);
+            URL.revokeObjectURL(url);
+            c.toBlob(function (b) { b ? ok(b) : bad(new Error("encode")); }, "image/jpeg", q);
+          };
+          img.onerror = function () { URL.revokeObjectURL(url); bad(new Error("decode")); };
+          img.src = url;
+        });
+      }
+      function upload(file) {
+        var tile = document.createElement("div");
+        tile.className = "ph loading";
+        tile.innerHTML = '<span class="ph-wait"></span>';
+        tile.querySelector(".ph-wait").textContent = phL.upL;
+        grid.insertBefore(tile, add);
+        busy++; refresh();
+        return shrink(file, 1600, 0.82)
+          .then(function (b) { return b.size > 900000 ? shrink(file, 1200, 0.72) : b; })
+          .then(function (b) { return fetch(box.dataset.upload, { method: "POST", body: b, headers: { "content-type": "image/jpeg" }, credentials: "same-origin" }); })
+          .then(function (r) { if (!r.ok) throw new Error("http " + r.status); return r.json(); })
+          .then(function (d) {
+            tile.className = "ph";
+            tile.innerHTML = '<img alt=""><input type="hidden" name="photos"><button type="button" class="ph-x">×</button>';
+            tile.querySelector("img").src = d.url;
+            tile.querySelector("input").value = d.id;
+            tile.querySelector(".ph-x").setAttribute("aria-label", phL.removeL);
+          })
+          .catch(function () { tile.remove(); err(phL.errL); })
+          .finally(function () { busy--; refresh(); });
+      }
+      input.addEventListener("change", function () {
+        err("");
+        var files = Array.prototype.slice.call(input.files || []), room = max - count();
+        if (files.length > room) err(phL.maxL);
+        files.slice(0, Math.max(0, room)).forEach(upload);
+        input.value = "";
+      });
+      if (form) form.addEventListener("submit", function (e) { if (busy > 0) e.preventDefault(); });
+      refresh();
+    });
+  </script>
 </Layout>

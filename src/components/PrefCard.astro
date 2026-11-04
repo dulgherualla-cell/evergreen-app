@@ -1,6 +1,8 @@
 ---
 import Avatar from "./Avatar.astro";
 import { makeT, label, agoL } from "../lib/i18n";
+import { u } from "../lib/util";
+import { isPhotoId } from "../lib/photos";
 interface Props {
   member: { name: string; avatar_icon?: string | null; avatar_color?: string | null };
   answer: any | null;
@@ -15,6 +17,7 @@ const merch = a ? [...(Array.isArray(a.merch) ? a.merch.map(L) : []), ...(a.merc
 const links: string[] = a ? String(a.links || "").split(/\n+/).map((s: string) => s.trim()).filter(Boolean) : [];
 const host = (x: string) => { try { return new URL(x).hostname.replace(/^www\./, ""); } catch { return ""; } };
 const isUrl = (x: string) => /^https?:\/\//i.test(x);
+const photos: string[] = a && Array.isArray(a.photos) ? a.photos.filter((x: any) => isPhotoId(String(x))) : [];
 const tags: string[] = a && Array.isArray(a.fandomTags) ? a.fandomTags.map(L) : [];
 ---
 {
@@ -57,6 +60,16 @@ const tags: string[] = a && Array.isArray(a.fandomTags) ? a.fandomTags.map(L) : 
         <div><div class="label">{t("q.merch")}</div><div class="chips">{merch.map((x) => <span class="chip">{x}</span>)}</div></div>
       )}
       {a.wishes && <div><div class="label">{t("q.wishes")}</div><p class="ans">{a.wishes}</p></div>}
+      {photos.length > 0 && (
+        <div>
+          <div class="label">{t("pc.photos")}</div>
+          <div class="ph-grid view">
+            {photos.map((id) => (
+              <a class="ph" href={u(`/photo/${id}`)} target="_blank" rel="noopener"><img src={u(`/photo/${id}`)} alt="" loading="lazy" /></a>
+            ))}
+          </div>
+        </div>
+      )}
       {links.length > 0 && (
         <div>
           <div class="label">{t("q.links")}</div>
