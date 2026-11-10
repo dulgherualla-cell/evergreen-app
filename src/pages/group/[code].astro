@@ -8,6 +8,7 @@ import { makeT, label, fmtDateL, agoL, inviteTextL } from "../../lib/i18n";
 import { all, one, run } from "../../lib/db";
 import { getGroup, groupMembers, parseAnswer } from "../../lib/groups";
 import { MAX_PHOTOS, ownedPhotoIds, dropUnusedPhotos } from "../../lib/photos";
+import { drawPairs } from "../../lib/draw";
 
 const locals = Astro.locals as any;
 const user = locals.user;
@@ -37,6 +38,7 @@ if (Astro.request.method === "POST" && db && g) {
     if (mid && mid !== user.id) {
       await run(db, "DELETE FROM answers WHERE group_code = ? AND user_id = ?", code, mid);
       await run(db, "DELETE FROM photos WHERE group_code = ? AND user_id = ?", code, mid);
+      await run(db, "DELETE FROM exclusions WHERE group_code = ? AND (giver_id = ? OR receiver_id = ?)", code, mid, mid);
       await run(db, "DELETE FROM members WHERE group_code = ? AND user_id = ?", code, mid);
     }
     return back("?tab=admin&msg=removed");
@@ -57,14 +59,11 @@ if (Astro.request.method === "POST" && db && g) {
   if (isOwner && action === "draw" && !g.drawn) {
     const ids = (await all<any>(db, "SELECT user_id FROM members WHERE group_code = ?", code)).map((r) => r.user_id);
     if (ids.length < 3) return back("?tab=admin&msg=few");
-    // Fisher–Yates with crypto randomness, then a single cycle: nobody draws themselves.
-    for (let i = ids.length - 1; i > 0; i--) {
-      const r = crypto.getRandomValues(new Uint32Array(1))[0] / 2 ** 32;
-      const j = Math.floor(r * (i + 1));
-      [ids[i], ids[j]] = [ids[j], ids[i]];
-    }
+    const rules = await all<any>(db, "SELECT giver_id, receiver_id FROM exclusions WHERE group_code = ?", code);
+    const result = drawPairs(ids, rules);
+    if (!result) return back("?tab=admin&msg=impossible");
     const stmts = [db.prepare("DELETE FROM pairs WHERE group_code = ?").bind(code)];
-    ids.forEach((id, i) => stmts.push(db.prepare("INSERT INTO pairs (group_code, giver_id, receiver_id) VALUES (?, ?, ?)").bind(code, id, ids[(i + 1) % ids.length])));
+    result.forEach((rid, gid) => stmts.push(db.prepare("INSERT INTO pairs (group_code, giver_id, receiver_id) VALUES (?, ?, ?)").bind(code, gid, rid)));
     stmts.push(db.prepare("UPDATE groups SET drawn = 1, drawn_at = ? WHERE code = ?").bind(Date.now(), code));
     await db.batch(stmts);
     return back("?tab=admin&msg=drawn");
@@ -89,11 +88,28 @@ if (Astro.request.method === "POST" && db && g) {
     return back("?tab=admin&msg=settings");
   }
 
+  if (isOwner && action === "exclusions") {
+    const ids = (await all<any>(db, "SELECT user_id FROM members WHERE group_code = ?", code)).map((r) => r.user_id);
+    const set = new Set(ids);
+    const rows: [string, string][] = [];
+    for (const gid of ids) {
+      for (const rid of new Set(fd.getAll(`ex_${gid}`).map(String))) {
+        if (rid !== gid && set.has(rid)) rows.push([gid, rid]);
+      }
+    }
+    const stmts = [db.prepare("DELETE FROM exclusions WHERE group_code = ?").bind(code)];
+    rows.slice(0, 5000).forEach(([gid, rid]) => stmts.push(db.prepare("INSERT OR IGNORE INTO exclusions (group_code, giver_id, receiver_id) VALUES (?, ?, ?)").bind(code, gid, rid)));
+    await db.batch(stmts);
+    const ok = ids.length < 3 || !!drawPairs(ids, rows.map(([giver_id, receiver_id]) => ({ giver_id, receiver_id })));
+    return back(`?tab=admin&msg=${ok ? "rules" : "rulesbad"}#rules`);
+  }
+
   if (isOwner && action === "delete") {
     await db.batch([
       db.prepare("DELETE FROM pairs WHERE group_code = ?").bind(code),
       db.prepare("DELETE FROM answers WHERE group_code = ?").bind(code),
       db.prepare("DELETE FROM photos WHERE group_code = ?").bind(code),
+      db.prepare("DELETE FROM exclusions WHERE group_code = ?").bind(code),
       db.prepare("DELETE FROM invites WHERE group_code = ?").bind(code),
       db.prepare("DELETE FROM members WHERE group_code = ?").bind(code),
       db.prepare("DELETE FROM groups WHERE code = ?").bind(code),
@@ -110,6 +126,7 @@ if (Astro.request.method === "POST" && db && g) {
   if (isMember && action === "leave" && !g.drawn && !isOwner) {
     await run(db, "DELETE FROM answers WHERE group_code = ? AND user_id = ?", code, user.id);
     await run(db, "DELETE FROM photos WHERE group_code = ? AND user_id = ?", code, user.id);
+    await run(db, "DELETE FROM exclusions WHERE group_code = ? AND (giver_id = ? OR receiver_id = ?)", code, user.id, user.id);
     await run(db, "DELETE FROM members WHERE group_code = ? AND user_id = ?", code, user.id);
     return Astro.redirect(u("/cabinet?tab=part&msg=left"));
   }
@@ -170,6 +187,8 @@ const reqTab = Astro.url.searchParams.get("tab");
 // Organizers land on "Керування"; they can switch to "Моя участь" if they also play.
 const tab = isOwner ? (reqTab === "me" && isMember ? "me" : "admin") : "me";
 
+const exRows = g && isOwner ? await all<any>(db, "SELECT giver_id, receiver_id FROM exclusions WHERE group_code = ?", code) : [];
+const exOf = (id: string) => new Set(exRows.filter((r) => r.giver_id === id).map((r) => r.receiver_id));
 const invites = g && isOwner ? await all<any>(db, "SELECT email FROM invites WHERE group_code = ? ORDER BY created_at", code) : [];
 const questions =
   g && isOwner
@@ -201,6 +220,9 @@ const MSGS: Record<string, [string, string]> = {
   few: ["bad", t("g.msg.few")],
   settings: ["ok", t("g.msg.settings")],
   noname: ["bad", t("g.msg.noname")],
+  rules: ["ok", t("g.msg.rules")],
+  rulesbad: ["bad", t("g.msg.rulesbad")],
+  impossible: ["bad", t("g.msg.impossible")],
 };
 const flash = msg ? MSGS[msg] : null;
 const invText = g ? inviteTextL(lang, g) : "";
@@ -303,6 +325,38 @@ const myPhotos: string[] = Array.isArray(a.photos) ? a.photos : [];
                     </>
                   )}
                 </div>
+
+                {ms.length >= 2 && (
+                  <form class="panel" method="post" id="rules" data-rules>
+                    <input type="hidden" name="action" value="exclusions" />
+                    <div>
+                      <h2>{t("g.rules")}</h2>
+                      <p style="color:var(--muted);font-size:14px;margin-top:6px">{t("g.rules.p")}{g.drawn ? " " + t("g.rules.drawn") : ""}</p>
+                    </div>
+                    <label class="check"><input type="checkbox" data-mutual checked /> {t("g.rules.mutual")}</label>
+                    <div class="rules">
+                      {ms.map((m) => {
+                        const ex = exOf(m.user_id);
+                        const names = ms.filter((o) => ex.has(o.user_id)).map((o) => o.name);
+                        return (
+                          <details class="rule" data-giver={m.user_id}>
+                            <summary>
+                              <Avatar name={m.name} icon={m.avatar_icon} color={m.avatar_color} />
+                              <span class="rule-nm"><b>{m.name}</b><small data-sum>{names.length ? t("g.rules.not", { list: names.join(", ") }) : t("g.rules.none")}</small></span>
+                              <span class="rule-n" data-count hidden={!names.length}>{names.length}</span>
+                            </summary>
+                            <div class="seg rule-opts">
+                              {ms.filter((o) => o.user_id !== m.user_id).map((o) => (
+                                <label><input type="checkbox" name={`ex_${m.user_id}`} value={o.user_id} data-name={o.name} checked={ex.has(o.user_id)} /><span>{o.name}</span></label>
+                              ))}
+                            </div>
+                          </details>
+                        );
+                      })}
+                    </div>
+                    <div><button class="btn small" type="submit">{t("g.rules.save")}</button></div>
+                  </form>
+                )}
 
                 <div class="panel">
                   <h2>{t("g.settings")}</h2>
@@ -605,6 +659,27 @@ const myPhotos: string[] = Array.isArray(a.photos) ? a.photos : [];
       });
       if (form) form.addEventListener("submit", function (e) { if (busy > 0) e.preventDefault(); });
       refresh();
+    });
+  </script>
+  <script is:inline define:vars={{ rL: { none: t("g.rules.none"), not: t("g.rules.not", { list: "%s" }) } }}>
+    // Exclusion rules: optional mirroring for couples, live summaries per member.
+    document.querySelectorAll("[data-rules]").forEach(function (form) {
+      var mutual = form.querySelector("[data-mutual]");
+      function sum(d) {
+        var names = Array.prototype.map.call(d.querySelectorAll("input:checked"), function (i) { return i.dataset.name; });
+        d.querySelector("[data-sum]").textContent = names.length ? rL.not.replace("%s", names.join(", ")) : rL.none;
+        var c = d.querySelector("[data-count]"); c.textContent = names.length; c.hidden = !names.length;
+      }
+      form.addEventListener("change", function (e) {
+        var box = e.target;
+        if (!box.name || box.name.indexOf("ex_") !== 0) return;
+        var giver = box.name.slice(3), d = box.closest(".rule");
+        if (mutual && mutual.checked) {
+          var other = form.querySelector('.rule[data-giver="' + box.value + '"] input[value="' + giver + '"]');
+          if (other && other.checked !== box.checked) { other.checked = box.checked; sum(other.closest(".rule")); }
+        }
+        sum(d);
+      });
     });
   </script>
 </Layout>
