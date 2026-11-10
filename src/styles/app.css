@@ -320,3 +320,9 @@ a.ph:hover img{opacity:.9}
 .rule-opts{padding:4px 14px 14px}
 .rule-opts span{background:#fff}
 .seg .rule-opts input:checked+span,.rule-opts input:checked+span{background:var(--rust);border-color:var(--rust);color:#fff}
+
+/* Questionnaire validation */
+.err-top{scroll-margin-top:96px;background:#fbf1ee;border:1px solid #efcfc6;border-radius:14px;padding:12px 14px;font-size:14px}
+.qsec.miss,.agree.miss{box-shadow:inset 3px 0 0 var(--danger);background:#fbf1ee;border-radius:12px;padding:12px 12px 12px 14px}
+.input.miss{border-color:var(--danger);background:#fff}
+.lab.miss{color:var(--danger)}

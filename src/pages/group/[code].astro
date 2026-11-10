@@ -24,6 +24,7 @@ const db = locals.db;
 let g = db ? await getGroup(db, code) : null;
 let formErr = "";
 let postedAnswer: any = null;
+const missKeys = new Set<string>();
 
 /* ------------------------- actions ------------------------- */
 if (Astro.request.method === "POST" && db && g) {
@@ -155,12 +156,16 @@ if (Astro.request.method === "POST" && db && g) {
       question: str(fd, "question", 2000),
     };
     const miss: string[] = [];
-    if (noF) { if (!ans.wishes && !ans.photos.length) miss.push(t("g.miss.wishes")); }
-    else if (!ans.fandoms && !ans.fandomTags.length) miss.push(t("g.miss.fandoms"));
-    if (!ans.merch.length && !ans.merchOther) miss.push(t("g.miss.merch"));
-    if (!ans.avoid) miss.push(t("g.miss.avoid"));
-    if (!ans.agree) miss.push(t("g.miss.agree"));
-    if (!ans.fio || !ans.city || !ans.phone || !ans.carrier || !ans.branch) miss.push(t("g.miss.delivery"));
+    const need = (k: string, label: string) => { missKeys.add(k); miss.push(label); };
+    if (noF) { if (!ans.wishes && !ans.photos.length) need("wishes", t("g.miss.wishes")); }
+    else if (!ans.fandoms && !ans.fandomTags.length) need("fandoms", t("g.miss.fandoms"));
+    if (!ans.merch.length && !ans.merchOther) need("merch", t("g.miss.merch"));
+    if (!ans.avoid) need("avoid", t("g.miss.avoid"));
+    if (!ans.agree) need("agree", t("g.miss.agree"));
+    if (!ans.fio || !ans.city || !ans.phone || !ans.carrier || !ans.branch) {
+      need("delivery", t("g.miss.delivery"));
+      for (const k of ["fio", "city", "phone", "carrier", "branch"]) if (!(ans as any)[k]) missKeys.add(k);
+    }
     if (miss.length) {
       formErr = t("g.miss", { list: miss.join(", ") });
       postedAnswer = ans;
@@ -231,6 +236,7 @@ const mailHref =
     ? `mailto:${invites.map((i) => i.email).join(",")}?subject=${encodeURIComponent(t("g.mailSubject", { name: g.name }))}&body=${encodeURIComponent(invText)}`
     : "";
 const has = (arr: any, v: string) => Array.isArray(arr) && arr.includes(v);
+const mc = (k: string) => (missKeys.has(k) ? " miss" : "");
 const myPhotos: string[] = Array.isArray(a.photos) ? a.photos : [];
 ---
 <Layout title={g ? `${g.name} · Secret Santa` : t("g.notFound")} active="cabinet">
@@ -453,14 +459,15 @@ const myPhotos: string[] = Array.isArray(a.photos) ? a.photos : [];
                   <div><button class="btn small ghost" type="submit">{t("g.saveAvatar")}</button></div>
                 </form>
 
-                <form class="panel" method="post" id="qf" novalidate>
+                <form class="panel" method="post" id="qf" action={u(`/group/${code}?tab=me#qf-err`)} novalidate>
                   <input type="hidden" name="action" value="answers" />
                   <div>
                     <h2>{t("g.myForm")}</h2>
                     <p style="color:var(--muted);font-size:14px;margin-top:6px">{t("g.myForm.p")}</p>
                   </div>
+                  {formErr && <p class="err err-top" id="qf-err" role="alert"><b>{t("g.notSaved")}</b> {formErr}</p>}
 
-                  <div class="qsec"><span class="qn">1</span><div class="field">
+                  <div class={`qsec${mc("fandoms")}`}><span class="qn">1</span><div class="field">
                     <span class="lab">{t("q.fandoms")} <i class="req">*</i></span>
                     <span class="hint">{t("g.q1.hint")}</span>
                     <label class="check nofandom"><input type="checkbox" id="noFandom" name="noFandom" value="1" checked={!!a.noFandom} /> {t("g.noFandom")}</label>
@@ -480,7 +487,7 @@ const myPhotos: string[] = Array.isArray(a.photos) ? a.photos : [];
                     <textarea class="input" id="chars" name="chars" placeholder={t("g.charsPh")}>{a.chars || ""}</textarea>
                   </div></div>
 
-                  <div class="qsec"><span class="qn">3</span><div class="field">
+                  <div class={`qsec${mc("merch")}`}><span class="qn">3</span><div class="field">
                     <span class="lab">{t("q.merch")} <i class="req">*</i></span>
                     <span class="hint">{t("g.q3.hint")}</span>
                     <div class="seg">
@@ -491,7 +498,7 @@ const myPhotos: string[] = Array.isArray(a.photos) ? a.photos : [];
                     <input class="input" name="merchOther" value={a.merchOther || ""} placeholder={t("g.merchPh")} style="margin-top:6px" />
                   </div></div>
 
-                  <div class="qsec"><span class="qn">4</span><div class="field">
+                  <div class={`qsec${mc("wishes")}`}><span class="qn">4</span><div class="field">
                     <label for="wishes">{t("q.wishes")} <i class="req" id="wish-req" hidden={!a.noFandom}>*</i></label>
                     <span class="hint">{t("g.q4.hint")}</span>
                     <textarea class="input" id="wishes" name="wishes" placeholder={t("g.wishesPh")}>{a.wishes || ""}</textarea>
@@ -517,34 +524,34 @@ const myPhotos: string[] = Array.isArray(a.photos) ? a.photos : [];
                     </div>
                   </div></div>
 
-                  <div class="qsec"><span class="qn">5</span><div class="field">
+                  <div class={`qsec${mc("avoid")}`}><span class="qn">5</span><div class="field">
                     <label for="avoid">{t("q.avoid")} <i class="req">*</i></label>
                     <span class="hint">{t("g.q5.hint")}</span>
                     <textarea class="input" id="avoid" name="avoid" placeholder={t("g.avoidPh")}>{a.avoid || ""}</textarea>
                   </div></div>
 
-                  <div class="agree">
+                  <div class={`agree${mc("agree")}`}>
                     <p>{t("g.agree.p")}</p>
                     <label class="check"><input type="checkbox" name="agree" value="1" checked={!!a.agree} /> {t("g.agree")} <i class="req">*</i></label>
                   </div>
 
-                  <div class="qsec"><span class="qn">6</span><div class="field" style="gap:12px">
+                  <div class={`qsec${mc("delivery")}`}><span class="qn">6</span><div class="field" style="gap:12px">
                     <span class="lab">{t("g.q6")} <i class="req">*</i></span>
                     <span class="hint">{t("g.q6.hint")}</span>
-                    <div class="field"><label for="fio">{t("q.fio")}</label><input class="input" id="fio" name="fio" value={a.fio || ""} autocomplete="name" /></div>
+                    <div class="field"><label for="fio">{t("q.fio")}</label><input class={`input${mc("fio")}`} id="fio" name="fio" value={a.fio || ""} autocomplete="name" /></div>
                     <div class="row">
-                      <div class="field"><label for="city">{t("q.city")}</label><input class="input" id="city" name="city" value={a.city || ""} /></div>
-                      <div class="field"><label for="phone">{t("q.phone")}</label><input class="input" id="phone" name="phone" type="tel" value={a.phone || ""} placeholder="+380…" autocomplete="tel" /></div>
+                      <div class="field"><label for="city">{t("q.city")}</label><input class={`input${mc("city")}`} id="city" name="city" value={a.city || ""} /></div>
+                      <div class="field"><label for="phone">{t("q.phone")}</label><input class={`input${mc("phone")}`} id="phone" name="phone" type="tel" value={a.phone || ""} placeholder="+380…" autocomplete="tel" /></div>
                     </div>
                     <div class="field">
-                      <span class="lab">{t("q.carrier")}</span>
+                      <span class={`lab${mc("carrier")}`}>{t("q.carrier")}</span>
                       <div class="seg" role="radiogroup">
                         {CARRIERS.map((c, i) => (
                           <label><input type="radio" name="carrier" id={`carrier-${i}`} value={c} checked={a.carrier === c} /><span>{L(c)}</span></label>
                         ))}
                       </div>
                     </div>
-                    <div class="field"><label for="branch">{t("q.branch")}</label><input class="input" id="branch" name="branch" value={a.branch || ""} placeholder={t("g.branchPh")} /></div>
+                    <div class="field"><label for="branch">{t("q.branch")}</label><input class={`input${mc("branch")}`} id="branch" name="branch" value={a.branch || ""} placeholder={t("g.branchPh")} /></div>
                   </div></div>
 
                   <div class="qsec"><span class="qn">7</span><div class="field">
@@ -553,7 +560,7 @@ const myPhotos: string[] = Array.isArray(a.photos) ? a.photos : [];
                     <textarea class="input" id="question" name="question" style="min-height:60px">{a.question || ""}</textarea>
                   </div></div>
 
-                  {formErr && <p class="err">{formErr}</p>}
+                  {formErr && <p class="err">{t("g.notSaved")} {formErr}</p>}
                   <div class="copyrow">
                     <button class="btn" type="submit">{myUpdated ? t("g.update") : t("g.save")}</button>
                     {myUpdated && <span class="hint" style="font-size:12px;color:var(--muted)">{t("g.savedAgo", { ago: ago(myUpdated) })}</span>}
