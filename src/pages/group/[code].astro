@@ -78,6 +78,17 @@ if (Astro.request.method === "POST" && db && g) {
     return back("?tab=admin&msg=reset");
   }
 
+  if (isOwner && action === "settings") {
+    const name = str(fd, "name", 60);
+    const budget = str(fd, "budget", 30);
+    const rawDate = str(fd, "date", 10);
+    const date = /^\d{4}-\d{2}-\d{2}$/.test(rawDate) ? rawDate : "";
+    const note = str(fd, "note", 500);
+    if (!name) return back("?tab=admin&msg=noname");
+    await run(db, "UPDATE groups SET name = ?, budget = ?, date = ?, note = ? WHERE code = ?", name, budget, date, note, code);
+    return back("?tab=admin&msg=settings");
+  }
+
   if (isOwner && action === "delete") {
     await db.batch([
       db.prepare("DELETE FROM pairs WHERE group_code = ?").bind(code),
@@ -188,6 +199,8 @@ const MSGS: Record<string, [string, string]> = {
   drawn: ["ok", t("g.msg.drawn")],
   reset: ["ok", t("g.msg.reset")],
   few: ["bad", t("g.msg.few")],
+  settings: ["ok", t("g.msg.settings")],
+  noname: ["bad", t("g.msg.noname")],
 };
 const flash = msg ? MSGS[msg] : null;
 const invText = g ? inviteTextL(lang, g) : "";
@@ -331,6 +344,17 @@ const myPhotos: string[] = Array.isArray(a.photos) ? a.photos : [];
 
                 <div class="panel">
                   <h2>{t("g.settings")}</h2>
+                  <form method="post" class="stack" style="gap:14px">
+                    <input type="hidden" name="action" value="settings" />
+                    <div class="field"><label for="s-name">{t("create.name")}</label><input class="input" id="s-name" name="name" required maxlength="60" value={g.name} /></div>
+                    <div class="row">
+                      <div class="field"><label for="s-budget">{t("create.budget")}</label><input class="input" id="s-budget" name="budget" maxlength="30" placeholder={t("create.budgetPh")} value={g.budget || ""} /></div>
+                      <div class="field"><label for="s-date">{t("create.date")}</label><input class="input" id="s-date" name="date" type="date" value={g.date || ""} /></div>
+                    </div>
+                    <div class="field"><label for="s-note">{t("create.note")}</label><textarea class="input" id="s-note" name="note" maxlength="500" placeholder={t("create.notePh")}>{g.note || ""}</textarea><span class="hint">{t("g.settings.hint")}</span></div>
+                    <div><button class="btn small" type="submit">{t("g.settings.save")}</button></div>
+                  </form>
+                  <hr class="sep" />
                   <form method="post" data-confirm={t("g.deleteConfirm")}>
                     <input type="hidden" name="action" value="delete" />
                     <button class="btn danger small" type="submit">{t("g.delete")}</button>

@@ -303,3 +303,4 @@ a.ph:hover img{opacity:.9}
 .ph-add[hidden]{display:none}
 .ph-add input{position:absolute;opacity:0;width:1px;height:1px;pointer-events:none}
 .ph-add:focus-within{outline:2px solid var(--rust);outline-offset:2px}
+.sep{border:0;border-top:1px solid var(--line);margin:4px 0;width:100%}
